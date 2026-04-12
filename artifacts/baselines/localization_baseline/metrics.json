@@ -1,0 +1,84 @@
+{
+  "overall": {
+    "mean_normalized_error": 0.40960774146278317,
+    "pck@0.05": 0.08080808080808081,
+    "pck@0.10": 0.1919191919191919,
+    "visible_mean_error": 0.4065332961399259,
+    "occluded_mean_error": 0.7109033831027826,
+    "temporal_jitter": 788.4121081645395
+  },
+  "per_joint": {
+    "nose": {
+      "mean_normalized_error": 0.18115847472295488,
+      "count": 6
+    },
+    "neck": {
+      "mean_normalized_error": 0.12743813459738976,
+      "count": 6
+    },
+    "left_shoulder": {
+      "mean_normalized_error": 0.17457480568810568,
+      "count": 6
+    },
+    "right_shoulder": {
+      "mean_normalized_error": 0.14496374825028216,
+      "count": 6
+    },
+    "left_elbow": {
+      "mean_normalized_error": 0.12107662776141698,
+      "count": 6
+    },
+    "right_elbow": {
+      "mean_normalized_error": 0.2886053219898301,
+      "count": 6
+    },
+    "left_wrist": {
+      "mean_normalized_error": 0.09345842080979018,
+      "count": 6
+    },
+    "right_wrist": {
+      "mean_normalized_error": 0.3667311242594531,
+      "count": 6
+    },
+    "left_hip": {
+      "mean_normalized_error": 0.34363420631793357,
+      "count": 6
+    },
+    "right_hip": {
+      "mean_normalized_error": 0.36231078770756797,
+      "count": 6
+    },
+    "left_knee": {
+      "mean_normalized_error": 0.5206184534561528,
+      "count": 6
+    },
+    "right_knee": {
+      "mean_normalized_error": 0.6265147784488648,
+      "count": 6
+    },
+    "left_ankle": {
+      "mean_normalized_error": 0.7336718223959923,
+      "count": 6
+    },
+    "right_ankle": {
+      "mean_normalized_error": 0.8138786339543232,
+      "count": 6
+    },
+    "left_heel": {
+      "mean_normalized_error": 0.6028735039499277,
+      "count": 5
+    },
+    "right_heel": {
+      "mean_normalized_error": 0.8468177789907191,
+      "count": 4
+    },
+    "left_toe": {
+      "mean_normalized_error": 0.6812274696156576,
+      "count": 3
+    },
+    "right_toe": {
+      "mean_normalized_error": 0.9046777726985621,
+      "count": 3
+    }
+  }
+}

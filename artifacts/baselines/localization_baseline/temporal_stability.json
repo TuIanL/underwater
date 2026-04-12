@@ -1,0 +1,340 @@
+{
+  "dataset_note": "Temporal stability measured on full stitched-clip predictions, not on a held-out clip.",
+  "models": {
+    "supervised": {
+      "num_frames": 1276,
+      "num_transitions": 1275,
+      "mean_frame_displacement": 175.110404472614,
+      "median_frame_displacement": 116.66666666666667,
+      "p95_frame_displacement": 528.9657396626314,
+      "max_frame_displacement": 1646.6259361357043,
+      "top_unstable_transitions": [
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 967,
+          "to_frame": 968,
+          "mean_joint_displacement": 1646.6259361357043,
+          "max_joint_displacement": 1938.891435846783
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 403,
+          "to_frame": 404,
+          "mean_joint_displacement": 1641.5832054081484,
+          "max_joint_displacement": 1938.891435846783
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 871,
+          "to_frame": 872,
+          "mean_joint_displacement": 1543.8050196748543,
+          "max_joint_displacement": 2760.2063441887817
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1057,
+          "to_frame": 1058,
+          "mean_joint_displacement": 1530.151769399258,
+          "max_joint_displacement": 2117.2859986312665
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 581,
+          "to_frame": 582,
+          "mean_joint_displacement": 1486.3850613268157,
+          "max_joint_displacement": 2542.5
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 491,
+          "to_frame": 492,
+          "mean_joint_displacement": 1455.912373061966,
+          "max_joint_displacement": 2176.8095920406085
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 683,
+          "to_frame": 684,
+          "mean_joint_displacement": 1402.5628726850016,
+          "max_joint_displacement": 2091.8950738505027
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 490,
+          "to_frame": 491,
+          "mean_joint_displacement": 1398.389458382007,
+          "max_joint_displacement": 2415.139747509448
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 494,
+          "to_frame": 495,
+          "mean_joint_displacement": 1386.9359807032945,
+          "max_joint_displacement": 2415.139747509448
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 496,
+          "to_frame": 497,
+          "mean_joint_displacement": 1365.52049788753,
+          "max_joint_displacement": 2760.2063441887817
+        }
+      ],
+      "per_joint_mean_displacement": {
+        "left_ankle": 196.20878164335352,
+        "left_elbow": 142.7817488480602,
+        "left_heel": 137.07832285255267,
+        "left_hip": 248.91701183359595,
+        "left_knee": 183.81992542566266,
+        "left_shoulder": 198.91676599113998,
+        "left_toe": 134.6198798535391,
+        "left_wrist": 149.94054778122054,
+        "neck": 149.86198298624774,
+        "nose": 163.3668673364804,
+        "right_ankle": 172.8601872288235,
+        "right_elbow": 275.2322752956686,
+        "right_heel": 140.68073905539433,
+        "right_hip": 150.62545310188918,
+        "right_knee": 185.04878276918026,
+        "right_shoulder": 160.79637051048613,
+        "right_toe": 161.6799067323409,
+        "right_wrist": 199.55173126141597
+      }
+    },
+    "semi_supervised": {
+      "num_frames": 1276,
+      "num_transitions": 1275,
+      "mean_frame_displacement": 249.82713671346926,
+      "median_frame_displacement": 139.37272999426872,
+      "p95_frame_displacement": 870.1689608394855,
+      "max_frame_displacement": 1567.3729897454482,
+      "top_unstable_transitions": [
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 560,
+          "to_frame": 561,
+          "mean_joint_displacement": 1567.3729897454482,
+          "max_joint_displacement": 3565.459297201414
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 401,
+          "to_frame": 402,
+          "mean_joint_displacement": 1543.9961032397107,
+          "max_joint_displacement": 3126.48364780627
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 399,
+          "to_frame": 400,
+          "mean_joint_displacement": 1513.1776357839703,
+          "max_joint_displacement": 3188.4792613407412
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 482,
+          "to_frame": 483,
+          "mean_joint_displacement": 1461.1698361153985,
+          "max_joint_displacement": 2995.797055876783
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 639,
+          "to_frame": 640,
+          "mean_joint_displacement": 1435.5158021915738,
+          "max_joint_displacement": 3309.565681475441
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 552,
+          "to_frame": 553,
+          "mean_joint_displacement": 1426.604572202024,
+          "max_joint_displacement": 2250.799857828323
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 842,
+          "to_frame": 843,
+          "mean_joint_displacement": 1381.9613943364786,
+          "max_joint_displacement": 2789.5564163500976
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 448,
+          "to_frame": 449,
+          "mean_joint_displacement": 1365.2649231038138,
+          "max_joint_displacement": 2493.1155207891993
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1250,
+          "to_frame": 1251,
+          "mean_joint_displacement": 1348.017568640954,
+          "max_joint_displacement": 2705.2682976924857
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 519,
+          "to_frame": 520,
+          "mean_joint_displacement": 1342.6562039995695,
+          "max_joint_displacement": 2930.1877072979473
+        }
+      ],
+      "per_joint_mean_displacement": {
+        "left_ankle": 303.9492906391188,
+        "left_elbow": 263.73735131373195,
+        "left_heel": 296.5639010628056,
+        "left_hip": 332.7949261533662,
+        "left_knee": 242.06638459777423,
+        "left_shoulder": 185.42878662327348,
+        "left_toe": 233.0593186924302,
+        "left_wrist": 307.7870525822093,
+        "neck": 256.1838594318969,
+        "nose": 121.30779430633368,
+        "right_ankle": 309.7532359525914,
+        "right_elbow": 273.35110516574696,
+        "right_heel": 102.68731086209671,
+        "right_hip": 261.03741150433444,
+        "right_knee": 294.98158549259296,
+        "right_shoulder": 212.5795708849816,
+        "right_toe": 217.13156881755665,
+        "right_wrist": 282.4880067596055
+      }
+    },
+    "semi_supervised_temporal": {
+      "num_frames": 1276,
+      "num_transitions": 1275,
+      "mean_frame_displacement": 244.27131967345946,
+      "median_frame_displacement": 134.16666666666666,
+      "p95_frame_displacement": 877.6454149547886,
+      "max_frame_displacement": 1667.2295014611198,
+      "top_unstable_transitions": [
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 401,
+          "to_frame": 402,
+          "mean_joint_displacement": 1667.2295014611198,
+          "max_joint_displacement": 2991.738624947039
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 560,
+          "to_frame": 561,
+          "mean_joint_displacement": 1570.9525967881334,
+          "max_joint_displacement": 3565.459297201414
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1258,
+          "to_frame": 1259,
+          "mean_joint_displacement": 1553.5200758072097,
+          "max_joint_displacement": 3249.36363962238
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 552,
+          "to_frame": 553,
+          "mean_joint_displacement": 1548.8930020106732,
+          "max_joint_displacement": 2361.440238498531
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1260,
+          "to_frame": 1261,
+          "mean_joint_displacement": 1545.1317527749318,
+          "max_joint_displacement": 2721.0119900507607
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 399,
+          "to_frame": 400,
+          "mean_joint_displacement": 1501.7230754193704,
+          "max_joint_displacement": 3188.4792613407412
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1250,
+          "to_frame": 1251,
+          "mean_joint_displacement": 1497.8189384000673,
+          "max_joint_displacement": 2705.2682976924857
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 446,
+          "to_frame": 447,
+          "mean_joint_displacement": 1453.8205891327696,
+          "max_joint_displacement": 2377.8193791791673
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 1253,
+          "to_frame": 1254,
+          "mean_joint_displacement": 1453.5943584452023,
+          "max_joint_displacement": 3373.2016041885195
+        },
+        {
+          "clip_id": "athlete01_session01_蛙",
+          "source_view": "stitched",
+          "from_frame": 842,
+          "to_frame": 843,
+          "mean_joint_displacement": 1450.1527249430671,
+          "max_joint_displacement": 2583.5295624397254
+        }
+      ],
+      "per_joint_mean_displacement": {
+        "left_ankle": 280.79177638899756,
+        "left_elbow": 237.25112473981383,
+        "left_heel": 288.8241095567254,
+        "left_hip": 358.4613695792441,
+        "left_knee": 224.13047872506547,
+        "left_shoulder": 144.41722090898833,
+        "left_toe": 215.34296836676833,
+        "left_wrist": 301.0182997683367,
+        "neck": 260.3141566023279,
+        "nose": 120.53794185509994,
+        "right_ankle": 357.76932233764614,
+        "right_elbow": 241.01469797500948,
+        "right_heel": 105.71707152024683,
+        "right_hip": 288.0563090317406,
+        "right_knee": 283.8774438123283,
+        "right_shoulder": 227.9568689758821,
+        "right_toe": 183.98753539805628,
+        "right_wrist": 277.4150585799929
+      }
+    }
+  },
+  "ranking_by_mean_frame_displacement": [
+    "supervised",
+    "semi_supervised_temporal",
+    "semi_supervised"
+  ]
+}

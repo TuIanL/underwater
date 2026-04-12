@@ -103,6 +103,47 @@ class UnlabeledFrameDataset(Dataset):
         return self.image_root / image_path
 
 
+class TemporalUnlabeledFrameDataset(UnlabeledFrameDataset):
+    def __init__(self, index_path: str | Path, image_root: str | Path, input_size: tuple[int, int]) -> None:
+        super().__init__(index_path=index_path, image_root=image_root, input_size=input_size)
+        self.temporal_pairs = self._build_temporal_pairs()
+
+    def __getitem__(self, index: int) -> dict:
+        current = super().__getitem__(index)
+        pair_index = self.temporal_pairs[index]
+        if pair_index is None:
+            current["temporal_image"] = current["image"]
+            current["has_temporal_pair"] = False
+            return current
+
+        neighbor_row = self.rows[pair_index]
+        temporal_image, _ = _load_image(self._resolve_image_path(neighbor_row.get("image_path", "")), self.input_size)
+        current["temporal_image"] = temporal_image
+        current["has_temporal_pair"] = True
+        return current
+
+    def _build_temporal_pairs(self) -> list[int | None]:
+        ordered = sorted(
+            enumerate(self.rows),
+            key=lambda item: (
+                item[1].get("clip_id", ""),
+                item[1].get("source_view", ""),
+                _safe_int(item[1].get("frame_index", 0)),
+            ),
+        )
+        temporal_pairs: list[int | None] = [None] * len(self.rows)
+        for current, nxt in zip(ordered, ordered[1:]):
+            current_index, current_row = current
+            next_index, next_row = nxt
+            same_stream = (
+                current_row.get("clip_id", "") == next_row.get("clip_id", "")
+                and current_row.get("source_view", "") == next_row.get("source_view", "")
+            )
+            if same_stream:
+                temporal_pairs[current_index] = next_index
+        return temporal_pairs
+
+
 def build_targets(
     annotation: dict,
     original_size: tuple[int, int],

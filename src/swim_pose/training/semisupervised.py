@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 from ..constants import KEYPOINT_NAMES
 from .common import checkpoint_path, resolve_device, set_random_seed
 from .config import experiment_output_dir, load_config
-from .dataset import PoseDataset, UnlabeledFrameDataset
-from .losses import consistency_loss, supervised_pose_loss
+from .dataset import PoseDataset, TemporalUnlabeledFrameDataset, UnlabeledFrameDataset
+from .losses import consistency_loss, supervised_pose_loss, temporal_smoothness_loss
 from .model import build_model
 
 
@@ -24,13 +24,17 @@ def run_semi_supervised_training(config_path: str | Path) -> Path:
     input_size = (dataset_config["input_width"], dataset_config["input_height"])
     heatmap_size = (dataset_config["heatmap_width"], dataset_config["heatmap_height"])
 
+    temporal_weight = float(training_config.get("temporal_loss_weight", 0.0))
+    temporal_threshold = float(training_config.get("temporal_threshold", training_config.get("pseudolabel_threshold", 0.5)))
+    unlabeled_dataset_cls = TemporalUnlabeledFrameDataset if temporal_weight > 0 else UnlabeledFrameDataset
+
     labeled_dataset = PoseDataset(
         index_path=dataset_config["labeled_index"],
         image_root=dataset_config["image_root"],
         input_size=input_size,
         heatmap_size=heatmap_size,
     )
-    unlabeled_dataset = UnlabeledFrameDataset(
+    unlabeled_dataset = unlabeled_dataset_cls(
         index_path=dataset_config["unlabeled_index"],
         image_root=dataset_config["image_root"],
         input_size=input_size,
@@ -83,8 +87,18 @@ def run_semi_supervised_training(config_path: str | Path) -> Path:
             weak_predictions = model(unlabeled_images)
             strong_predictions = model(_strong_augment(unlabeled_images))
             unsupervised_loss = consistency_loss(weak_predictions, strong_predictions, threshold=threshold)
+            temporal_loss = weak_predictions["heatmaps"].new_tensor(0.0)
+            if temporal_weight > 0:
+                temporal_images = unlabeled_batch["temporal_image"].to(device)
+                temporal_predictions = model(temporal_images)
+                temporal_loss = temporal_smoothness_loss(
+                    current_predictions=weak_predictions,
+                    temporal_predictions=temporal_predictions,
+                    has_temporal_pair=unlabeled_batch["has_temporal_pair"].to(device),
+                    threshold=temporal_threshold,
+                )
 
-            loss = supervised_loss + consistency_weight * unsupervised_loss
+            loss = supervised_loss + consistency_weight * unsupervised_loss + temporal_weight * temporal_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

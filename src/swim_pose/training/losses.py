@@ -37,3 +37,30 @@ def consistency_loss(
     confidence_mask = (weak_heatmaps.amax(dim=(-1, -2), keepdim=True) >= threshold).float()
     return ((weak_heatmaps - strong_heatmaps) ** 2 * confidence_mask).mean()
 
+
+def temporal_smoothness_loss(
+    current_predictions: dict[str, torch.Tensor],
+    temporal_predictions: dict[str, torch.Tensor],
+    has_temporal_pair: torch.Tensor,
+    threshold: float,
+) -> torch.Tensor:
+    current_coords, current_confidence = _decode_heatmap_coordinates(current_predictions["heatmaps"])
+    temporal_coords, temporal_confidence = _decode_heatmap_coordinates(temporal_predictions["heatmaps"])
+    pair_mask = (current_confidence >= threshold) & (temporal_confidence >= threshold)
+    pair_mask = pair_mask & has_temporal_pair.reshape(-1, 1).bool()
+    if not torch.any(pair_mask):
+        return current_predictions["heatmaps"].new_tensor(0.0)
+    squared_distance = ((current_coords - temporal_coords) ** 2).sum(dim=-1)
+    return squared_distance[pair_mask].mean()
+
+
+def _decode_heatmap_coordinates(heatmaps: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    probabilities = heatmaps.sigmoid()
+    batch_size, num_keypoints, height, width = probabilities.shape
+    flat = probabilities.reshape(batch_size, num_keypoints, -1)
+    flat_indices = flat.argmax(dim=-1)
+    confidence = flat.amax(dim=-1)
+    y = (flat_indices // width).float() / max(height - 1, 1)
+    x = (flat_indices % width).float() / max(width - 1, 1)
+    coordinates = torch.stack((x, y), dim=-1)
+    return coordinates, confidence

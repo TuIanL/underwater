@@ -1,0 +1,53 @@
+{
+  "dataset_note": "Preliminary comparison on 6 labeled frames from a single athlete/session stitched clip; no held-out athlete or session is available yet.",
+  "models": {
+    "supervised": {
+      "mean_normalized_error": 0.40960774146278317,
+      "pck@0.05": 0.08080808080808081,
+      "pck@0.10": 0.1919191919191919,
+      "visible_mean_error": 0.4065332961399259,
+      "occluded_mean_error": 0.7109033831027826,
+      "temporal_jitter": 788.4121081645395
+    },
+    "semi_supervised": {
+      "mean_normalized_error": 0.4529060917293652,
+      "pck@0.05": 0.050505050505050504,
+      "pck@0.10": 0.09090909090909091,
+      "visible_mean_error": 0.455327222812059,
+      "occluded_mean_error": 0.2156352456253732,
+      "temporal_jitter": 1354.8216928649983
+    },
+    "semi_supervised_temporal": {
+      "mean_normalized_error": 0.4572676274843911,
+      "pck@0.05": 0.0707070707070707,
+      "pck@0.10": 0.10101010101010101,
+      "visible_mean_error": 0.4597332640339729,
+      "occluded_mean_error": 0.2156352456253732,
+      "temporal_jitter": 1290.8868786785083
+    }
+  },
+  "ranking_by_mean_normalized_error": [
+    "supervised",
+    "semi_supervised",
+    "semi_supervised_temporal"
+  ],
+  "preferred_model": "supervised",
+  "delta_vs_supervised": {
+    "semi_supervised": {
+      "mean_normalized_error": 0.04329835026658202,
+      "pck@0.05": -0.03030303030303031,
+      "pck@0.10": -0.101010101010101,
+      "visible_mean_error": 0.048793926672133114,
+      "occluded_mean_error": -0.4952681374774094,
+      "temporal_jitter": 566.4095847004588
+    },
+    "semi_supervised_temporal": {
+      "mean_normalized_error": 0.04765988602160792,
+      "pck@0.05": -0.01010101010101011,
+      "pck@0.10": -0.0909090909090909,
+      "visible_mean_error": 0.05319996789404702,
+      "occluded_mean_error": -0.4952681374774094,
+      "temporal_jitter": 502.4747705139688
+    }
+  }
+}

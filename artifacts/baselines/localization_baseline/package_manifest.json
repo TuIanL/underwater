@@ -1,0 +1,10 @@
+{
+  "selected_model": "supervised",
+  "checkpoint": "best.pt",
+  "schema": "schema.md",
+  "metrics": "metrics.json",
+  "failure_modes": "failure_modes.md",
+  "comparison": "comparison.json",
+  "temporal_stability": "temporal_stability.json",
+  "note": "Baseline package prepared from the currently available single-clip stitched dataset."
+}
