@@ -1,0 +1,13 @@
+clip_id,athlete_id,session_id,source_view,frame_index,selection_reason
+athlete01_session01_蛙,athlete01,session01,stitched,92,cycle_anchor_1
+athlete01_session01_蛙,athlete01,session01,stitched,102,cycle_anchor_2
+athlete01_session01_蛙,athlete01,session01,stitched,192,cycle_anchor_3
+athlete01_session01_蛙,athlete01,session01,stitched,255,cycle_anchor_4
+athlete01_session01_蛙,athlete01,session01,stitched,408,cycle_anchor_5
+athlete01_session01_蛙,athlete01,session01,stitched,413,cycle_anchor_6
+athlete01_session01_蛙,athlete01,session01,stitched,561,cycle_anchor_7
+athlete01_session01_蛙,athlete01,session01,stitched,714,cycle_anchor_8
+athlete01_session01_蛙,athlete01,session01,stitched,830,cycle_anchor_9
+athlete01_session01_蛙,athlete01,session01,stitched,867,cycle_anchor_10
+athlete01_session01_蛙,athlete01,session01,stitched,1020,cycle_anchor_11
+athlete01_session01_蛙,athlete01,session01,stitched,1173,cycle_anchor_12

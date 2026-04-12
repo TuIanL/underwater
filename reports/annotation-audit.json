@@ -1,0 +1,89 @@
+{
+  "files": 12,
+  "files_with_warnings": 0,
+  "files_with_notes": 6,
+  "warnings": [],
+  "notes": [
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000092.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    },
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000102.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    },
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000192.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    },
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000255.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    },
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000408.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    },
+    {
+      "file": "data/annotations/seed/athlete01/session01/athlete01_session01_蛙/stitched/athlete01_session01_蛙_stitched_000413.json",
+      "issues": [
+        {
+          "kind": "no_swimmer_files",
+          "details": [
+            "Frame explicitly marked as no swimmer"
+          ],
+          "severity": "note"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "all_zero_files": 0,
+    "pending_files": 0,
+    "no_swimmer_files": 6,
+    "ankle_heel_overlap": 0,
+    "ankle_toe_overlap": 0,
+    "duplicate_left_right_points": 0,
+    "validation_errors": 0
+  }
+}

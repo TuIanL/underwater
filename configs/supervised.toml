@@ -1,0 +1,27 @@
+[experiment]
+name = "breaststroke-supervised-baseline"
+output_dir = "artifacts/checkpoints/supervised"
+seed = 7
+
+[dataset]
+train_index = "data/manifests/splits/train.csv"
+val_index = "data/manifests/splits/val.csv"
+annotation_index = "data/manifests/annotation_index.csv"
+image_root = "data/frames"
+input_width = 256
+input_height = 256
+heatmap_width = 64
+heatmap_height = 64
+
+[model]
+backbone = "resnet18"
+pretrained_backbone = true
+pretrained_checkpoint = ""
+
+[training]
+epochs = 10
+batch_size = 8
+learning_rate = 0.0005
+weight_decay = 0.0001
+num_workers = 0
+visibility_loss_weight = 0.2

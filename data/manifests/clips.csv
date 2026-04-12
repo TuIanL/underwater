@@ -1,0 +1,2 @@
+clip_id,athlete_id,session_id,raw_above_path,raw_under_path,stitched_path,primary_view,sync_status,sync_offset_ms,fps_above,fps_under,frame_count_above,frame_count_under,duration_above_s,duration_under_s,notes
+athlete01_session01_蛙,athlete01,session01,,,data/raw/videos/athlete01/session01/蛙.mp4,stitched,pending_audit,,,,,,,,

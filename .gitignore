@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+artifacts/checkpoints/
+artifacts/predictions/
+artifacts/reports/
+data/raw/
+data/frames/
+data/annotations/
+

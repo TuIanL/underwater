@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "swim-pose"
+version = "0.1.0"
+description = "Breaststroke keypoint localization tooling and training pipeline."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=2.0",
+  "opencv-python>=4.10",
+  "Pillow>=10.0",
+  "torch>=2.3",
+  "torchvision>=0.18",
+]
+
+[project.scripts]
+swim-pose = "swim_pose.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swim_pose"]
