@@ -24,19 +24,23 @@ def build_parser() -> argparse.ArgumentParser:
     manifest_init.add_argument("--output", required=True)
     manifest_init.set_defaults(handler=_handle_manifest_init)
 
-    manifest_audit = manifest_sub.add_parser("audit-sync", help="Audit dual-view synchronization metadata.")
+    manifest_audit = manifest_sub.add_parser(
+        "audit",
+        aliases=["audit-sync"],
+        help="Audit stitched-baseline manifests and optional raw-camera provenance metadata.",
+    )
     manifest_audit.add_argument("--manifest", required=True)
     manifest_audit.add_argument("--output", required=True)
     manifest_audit.set_defaults(handler=_handle_manifest_audit)
 
-    frames_parser = subparsers.add_parser("frames", help="Extract frame images from raw videos.")
+    frames_parser = subparsers.add_parser("frames", help="Extract frame images from manifest videos.")
     frames_sub = frames_parser.add_subparsers(dest="frames_command")
 
     frames_extract = frames_sub.add_parser("extract", help="Extract sampled frames from manifest videos.")
     frames_extract.add_argument("--manifest", required=True)
     frames_extract.add_argument("--output-root", required=True)
     frames_extract.add_argument("--index-output", required=True)
-    frames_extract.add_argument("--views", nargs="+", default=["above", "under"])
+    frames_extract.add_argument("--views", nargs="+", default=["stitched"])
     frames_extract.add_argument("--every-nth", type=int, default=1)
     frames_extract.set_defaults(handler=_handle_frames_extract)
 

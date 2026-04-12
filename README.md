@@ -1,6 +1,6 @@
 # Swim Pose
 
-This repository contains the first implementation pass for the `add-breaststroke-keypoint-localization` OpenSpec change. The current scope is dual-view breaststroke 2D keypoint localization with annotation tooling, dataset bookkeeping, a supervised baseline, and semi-supervised scaffolding.
+This repository contains the current implementation pass for breaststroke 2D keypoint localization on a single stitched video per clip. The current scope covers annotation tooling, dataset bookkeeping, a supervised baseline, and semi-supervised scaffolding for the stitched-video-first workflow.
 
 ## Layout
 
@@ -23,7 +23,7 @@ uv pip install -e .
 
 ```bash
 swim-pose manifest init --video-root data/raw/videos --output data/manifests/clips.csv
-swim-pose manifest audit-sync --manifest data/manifests/clips.csv --output data/manifests/clips.audit.csv
+swim-pose manifest audit --manifest data/manifests/clips.csv --output data/manifests/clips.audit.csv
 swim-pose frames extract --manifest data/manifests/clips.audit.csv --output-root data/frames --index-output data/manifests/unlabeled_index.csv --views stitched --every-nth 5
 swim-pose annotations template --output data/templates/frame_annotation.example.json
 swim-pose annotations validate --input data/templates/frame_annotation.example.json
@@ -55,9 +55,9 @@ See `docs/annotation-guide.md` for the detailed labeling rules.
 
 ## Raw Video Placement
 
-Put untouched source videos under `data/raw/videos/<athlete_id>/<session_id>/`.
+Put baseline source videos under `data/raw/videos/<athlete_id>/<session_id>/`.
 
-If you only have stitched videos, this is fine for the first baseline:
+The current baseline expects one stitched video per clip:
 
 ```text
 data/raw/videos/
@@ -66,7 +66,7 @@ data/raw/videos/
       trial01_stitched.mp4
 ```
 
-If you later collect separate raw views, keep the same clip stem for synchronized files:
+If you also keep separate raw camera files for provenance or future experiments, keep the same clip stem:
 
 ```text
 data/raw/videos/
@@ -81,9 +81,13 @@ Supported suffixes:
 
 - `_above` for the above-water camera
 - `_under` for the underwater camera
-- `_stitched` for the preview/composite video if you have it
+- `_stitched` for the baseline composite video
 
 If a file has no view suffix, the tooling treats it as `stitched`.
+
+## Manifest Notes
+
+`stitched_path` is the required baseline field for extraction, annotation, training, inference, and evaluation. `raw_above_path`, `raw_under_path`, and the audit status columns are optional provenance metadata when separate camera files exist.
 
 ## Labeling Workflow
 

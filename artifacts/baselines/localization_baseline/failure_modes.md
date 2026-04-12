@@ -18,7 +18,6 @@
 
 ## Open Questions
 
-- Are both raw streams available and time-aligned for every recorded athlete and session?
-- Will the first baseline use a shared model across above-water and underwater views, or separate per-view experiments?
+- How much stitched-seam distortion can the baseline tolerate before lower-body landmarks become unreliable?
+- Should separate raw camera files remain provenance only, or be revisited in a future multi-view change?
 - Is a breathing-specific point such as `chin` necessary in a future change?
-- How much synchronization drift is acceptable before a dual-view clip is demoted to single-view usage?

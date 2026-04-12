@@ -3,16 +3,16 @@
 ## Purpose
 TBD - created by archiving change add-breaststroke-keypoint-localization. Update Purpose after archive.
 ## Requirements
-### Requirement: Canonical dual-view source data
-The project SHALL treat synchronized raw above-water video and raw underwater video as the canonical source data for breaststroke keypoint localization whenever both streams are available. The stitched composite video MUST be treated as a review or presentation artifact and MUST NOT silently replace the raw streams in training or evaluation manifests.
+### Requirement: Canonical stitched source data
+The project SHALL treat one stitched composite video as the canonical source data for breaststroke keypoint localization. The baseline manifest MUST require the stitched clip path, athlete identifier, and session identifier for each clip. Raw above-water and underwater videos MAY be recorded as optional provenance metadata when available, but they MUST NOT be required inputs for baseline training or evaluation.
 
-#### Scenario: Raw synchronized streams are available
-- **WHEN** a clip is prepared for training or evaluation
-- **THEN** the dataset manifest records the above-water stream, underwater stream, athlete identifier, session identifier, and synchronization relationship for that clip
+#### Scenario: Preparing a clip for training or evaluation
+- **WHEN** a clip is prepared for the localization pipeline
+- **THEN** the dataset manifest records the stitched clip path together with the athlete identifier and session identifier as the required baseline fields
 
-#### Scenario: Only stitched material is available for a clip
-- **WHEN** a clip lacks one or both raw streams
-- **THEN** the manifest marks the clip as stitched-only so it can be excluded from canonical dual-view experiments or handled as a degraded fallback
+#### Scenario: Raw camera files also exist for a clip
+- **WHEN** a clip also has separate above-water or underwater source files
+- **THEN** those files are treated as optional metadata and do not change the stitched clip's role as the canonical baseline input
 
 ### Requirement: Breaststroke keypoint schema
 The localization capability SHALL use exactly 18 keypoints for the first phase: `nose`, `neck`, `left_shoulder`, `right_shoulder`, `left_elbow`, `right_elbow`, `left_wrist`, `right_wrist`, `left_hip`, `right_hip`, `left_knee`, `right_knee`, `left_ankle`, `right_ankle`, `left_heel`, `right_heel`, `left_toe`, and `right_toe`. Left and right MUST refer to the athlete's anatomical left and right, not image left and right.
@@ -59,14 +59,14 @@ The annotation process SHALL include documented labeling guidance for each keypo
 - **THEN** the affected frames are corrected and the guidance is updated before continued large-scale labeling
 
 ### Requirement: Localization model outputs
-The first-phase model SHALL output 2D coordinates, confidence values, and visibility-related predictions for the full 18-point schema on each processed frame or frame-view pair. Downstream consumers MUST be able to distinguish low-confidence predictions from absent or non-inferable keypoints.
+The first-phase model SHALL output 2D coordinates, confidence values, and visibility-related predictions for the full 18-point schema on each processed stitched-video frame or stitched-frame window. Downstream consumers MUST be able to distinguish low-confidence predictions from absent or non-inferable keypoints.
 
-#### Scenario: A frame is processed at inference time
-- **WHEN** the model returns keypoint predictions
+#### Scenario: A stitched-video frame is processed at inference time
+- **WHEN** the model returns keypoint predictions for a frame from the stitched clip
 - **THEN** each of the 18 keypoints includes coordinates or an explicit absent state together with a confidence value that downstream logic can inspect
 
 #### Scenario: A point is highly uncertain
-- **WHEN** the model cannot localize a keypoint reliably because of occlusion or motion artifacts
+- **WHEN** the model cannot localize a keypoint reliably because of occlusion, seam artifacts, or motion noise in the stitched video
 - **THEN** the output preserves low confidence instead of forcing a high-certainty coordinate
 
 ### Requirement: Semi-supervised training workflow
@@ -81,13 +81,12 @@ The training pipeline SHALL use a human pose pretrained initialization and SHALL
 - **THEN** the pipeline records the confidence criteria used to accept, reject, or down-weight those targets
 
 ### Requirement: Evaluation and reporting
-The project SHALL report localization quality using normalized keypoint error or PCK-style accuracy, per-joint metrics, visible-versus-occluded performance, temporal stability, and held-out athlete or held-out session results. Aggregate metrics alone MUST NOT be the only reported outcome.
+The project SHALL report localization quality on stitched-video inputs using normalized keypoint error or PCK-style accuracy, per-joint metrics, visible-versus-occluded performance, temporal stability, and held-out athlete or held-out session results. Aggregate metrics alone MUST NOT be the only reported outcome.
 
 #### Scenario: A model checkpoint is evaluated
-- **WHEN** validation or test results are published
+- **WHEN** validation or test results are published for the stitched-video baseline
 - **THEN** the report includes both overall metrics and joint-level breakdowns for difficult landmarks such as wrists, ankles, heels, and toes
 
 #### Scenario: Generalization is assessed
-- **WHEN** the team claims an improvement over a prior baseline
+- **WHEN** the team claims an improvement over a prior stitched-video baseline
 - **THEN** the comparison is made on held-out athletes or sessions rather than on frame-randomized splits
-

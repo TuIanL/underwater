@@ -20,7 +20,7 @@ def select_seed_frames(
     manifest_path: str | Path,
     output_path: str | Path,
     frames_per_clip: int = 12,
-    source_view: str = "under",
+    source_view: str = "stitched",
     seed: int = 7,
 ) -> Path:
     rows = read_csv_rows(manifest_path)

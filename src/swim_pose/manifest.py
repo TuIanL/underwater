@@ -151,14 +151,14 @@ def infer_ids(video_root: Path, path: Path, fallback_clip_id: str) -> tuple[str,
 
 
 def determine_primary_view(entry: ClipManifestEntry) -> str:
-    if entry.raw_above_path and entry.raw_under_path:
-        return "dual_raw"
-    if entry.raw_under_path:
-        return "under"
-    if entry.raw_above_path:
-        return "above"
     if entry.stitched_path:
         return "stitched"
+    if entry.raw_above_path and entry.raw_under_path:
+        return "dual_raw_only"
+    if entry.raw_under_path:
+        return "under_only"
+    if entry.raw_above_path:
+        return "above_only"
     return "missing"
 
 
@@ -216,15 +216,19 @@ def classify_sync_status(
     above_meta: dict[str, float | int],
     under_meta: dict[str, float | int],
 ) -> str:
+    if not row.get("stitched_path"):
+        return "missing_stitched"
+    if not row.get("raw_above_path") and not row.get("raw_under_path"):
+        return "stitched_only"
     if not row.get("raw_above_path") or not row.get("raw_under_path"):
-        return "degraded_missing_view"
+        return "partial_raw_provenance"
     if not above_meta or not under_meta:
         return "manual_review_required"
     duration_delta = abs(float(above_meta.get("duration_s", 0.0)) - float(under_meta.get("duration_s", 0.0)))
     frame_delta = abs(int(above_meta.get("frames", 0)) - int(under_meta.get("frames", 0)))
     if duration_delta <= 0.1 and frame_delta <= 3:
-        return "aligned_candidate"
-    return "duration_mismatch"
+        return "aligned_optional_raw"
+    return "duration_mismatch_optional_raw"
 
 
 def stringify(value: object) -> str:

@@ -6,8 +6,8 @@ This guide defines the canonical annotation rules for the breaststroke localizat
 
 ## View Policy
 
-- Use synchronized raw above-water and raw underwater footage as the labeling source whenever available.
-- If only stitched/composited footage exists, it is acceptable as the phase-one labeling source and should be marked as `source_view = stitched`.
+- Use the stitched/composited video as the canonical labeling source for the phase-one baseline and mark labeled frames as `source_view = stitched`.
+- If separate above-water or underwater files also exist, keep them as provenance only; do not switch the annotation workflow away from the stitched timeline.
 - Keep the athlete's anatomical left and right identities fixed across all frames, even if the near-side limb appears on the opposite side of the image.
 
 ## Keypoint Definitions
