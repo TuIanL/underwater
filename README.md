@@ -54,9 +54,12 @@ uv run swim-pose predictions web \
 What the viewer shows:
 
 - the original frame with the predicted 18-point skeleton overlay
+- continuous playback controls for turning a prediction sequence into a local pose video-style review
 - clip and frame navigation for browsing one prediction file
 - per-keypoint coordinates, confidence, and visibility values
 - optional overall and per-joint metrics when a report JSON is provided
+
+If the prediction file was generated from sampled frames rather than every original video frame, playback will still be sequence playback, but it will look like a sampled replay instead of a true full-frame reconstruction.
 
 If you only want qualitative inspection, `--report` is optional:
 
@@ -64,6 +67,25 @@ If you only want qualitative inspection, `--report` is optional:
 uv run swim-pose predictions web \
   --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
   --frame-root data/frames
+```
+
+If you want a pure clip-based player view that auto-plays and hides the long frame list:
+
+```bash
+uv run swim-pose predictions web \
+  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
+  --frame-root data/frames \
+  --player-mode
+```
+
+If one predictions file contains multiple clips, you can jump directly into one clip:
+
+```bash
+uv run swim-pose predictions web \
+  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
+  --frame-root data/frames \
+  --player-mode \
+  --clip athlete01_session01_蛙
 ```
 
 ## Path Rules

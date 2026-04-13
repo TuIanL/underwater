@@ -186,6 +186,10 @@ HTML_PAGE = """<!doctype html>
       gap: 10px;
       align-items: center;
     }
+    .range-row strong {
+      min-width: 70px;
+      text-align: right;
+    }
     input[type="range"] {
       accent-color: var(--accent);
     }
@@ -323,6 +327,22 @@ HTML_PAGE = """<!doctype html>
       font-size: 12px;
       line-height: 1.5;
     }
+    body.player-mode .layout {
+      grid-template-columns: minmax(0, 1fr) 340px;
+    }
+    body.player-mode #frameListSection {
+      display: none;
+    }
+    body.player-mode .sidebar {
+      grid-template-rows: auto auto auto minmax(220px, 1fr);
+    }
+    body.player-mode .viewer-header h1::after {
+      content: " · 播放器模式";
+      color: #7dd3fc;
+      font-size: 14px;
+      font-weight: 700;
+      margin-left: 8px;
+    }
     @media (max-width: 1220px) {
       .layout {
         grid-template-columns: 1fr;
@@ -369,8 +389,28 @@ HTML_PAGE = """<!doctype html>
             <select id="clipFilter"></select>
           </label>
 
+          <button id="playPauseBtn">开始播放</button>
+          <button id="restartBtn" class="secondary">回到开头</button>
+
           <button id="prevBtn" class="secondary">上一帧</button>
           <button id="nextBtn">下一帧</button>
+
+          <button id="loopBtn" class="secondary">循环: 开</button>
+          <label class="field">
+            <span>播放速度</span>
+            <div class="range-row">
+              <input id="playbackFpsInput" type="range" min="2" max="30" step="1" value="12">
+              <strong id="playbackFpsValue">12 FPS</strong>
+            </div>
+          </label>
+
+          <label class="field-wide">
+            <span>播放进度</span>
+            <div class="range-row">
+              <input id="timelineInput" type="range" min="0" max="0" step="1" value="0">
+              <strong id="timelineValue">0 / 0</strong>
+            </div>
+          </label>
 
           <label class="field-wide">
             <span>高亮阈值</span>
@@ -380,7 +420,7 @@ HTML_PAGE = """<!doctype html>
             </div>
           </label>
         </div>
-        <div class="section-footer">
+        <div id="playbackHint" class="section-footer">
           低于阈值的关键点和骨架连线会被淡化，可见性为 0 的点会继续显示为弱提示。
         </div>
       </section>
@@ -397,7 +437,7 @@ HTML_PAGE = """<!doctype html>
         <div id="keypointList" class="scroll-list"></div>
       </section>
 
-      <section class="section">
+      <section id="frameListSection" class="section">
         <h3>帧列表</h3>
         <div id="frameList" class="scroll-list"></div>
       </section>
@@ -409,6 +449,8 @@ HTML_PAGE = """<!doctype html>
     const KEYPOINT_GROUPS = __KEYPOINT_GROUPS__;
     const SKELETON_EDGES = __SKELETON__;
     const VISIBILITY_STATES = __VISIBILITY_STATES__;
+    const INITIAL_PLAYER_MODE = __INITIAL_PLAYER_MODE__;
+    const INITIAL_CLIP = __INITIAL_CLIP__;
     const GROUP_COLORS = {
       head: "#fb923c",
       upper: "#34d399",
@@ -428,6 +470,13 @@ HTML_PAGE = """<!doctype html>
       image: new Image(),
       frameError: "",
       sessionMeta: null,
+      playbackFps: 12,
+      isPlaying: false,
+      playbackTimer: null,
+      loopPlayback: true,
+      imageCache: new Map(),
+      playerMode: INITIAL_PLAYER_MODE,
+      initialClip: INITIAL_CLIP || "",
     };
 
     const canvas = document.getElementById("viewerCanvas");
@@ -437,15 +486,25 @@ HTML_PAGE = """<!doctype html>
     const frameCounterEl = document.getElementById("frameCounter");
     const errorBannerEl = document.getElementById("errorBanner");
     const clipFilterEl = document.getElementById("clipFilter");
+    const playPauseBtn = document.getElementById("playPauseBtn");
+    const restartBtn = document.getElementById("restartBtn");
     const thresholdInputEl = document.getElementById("thresholdInput");
     const thresholdValueEl = document.getElementById("thresholdValue");
+    const playbackFpsInputEl = document.getElementById("playbackFpsInput");
+    const playbackFpsValueEl = document.getElementById("playbackFpsValue");
+    const timelineInputEl = document.getElementById("timelineInput");
+    const timelineValueEl = document.getElementById("timelineValue");
+    const playbackHintEl = document.getElementById("playbackHint");
+    const loopBtn = document.getElementById("loopBtn");
     const overallMetricsEl = document.getElementById("overallMetrics");
     const perJointListEl = document.getElementById("perJointList");
     const reportNoteEl = document.getElementById("reportNote");
     const keypointListEl = document.getElementById("keypointList");
     const frameListEl = document.getElementById("frameList");
+    const frameListSectionEl = document.getElementById("frameListSection");
     const prevBtn = document.getElementById("prevBtn");
     const nextBtn = document.getElementById("nextBtn");
+    const IMAGE_CACHE_LIMIT = 18;
 
     function currentItem() {
       return state.currentIndex >= 0 ? state.items[state.currentIndex] || null : null;
@@ -519,9 +578,13 @@ HTML_PAGE = """<!doctype html>
       const reportText = state.sessionMeta.report_available
         ? `评估报告: ${state.sessionMeta.report_file}`
         : "评估报告: 未提供";
+      const modeText = state.playerMode
+        ? `模式: 纯播放器 (${state.selectedClip === "__all__" ? "自动 clip" : state.selectedClip})`
+        : "模式: 检查器";
       sidebarMetaEl.textContent =
         `预测文件: ${state.sessionMeta.prediction_file}\n` +
         `总帧数: ${state.items.length}\n` +
+        `${modeText}\n` +
         reportText;
     }
 
@@ -535,6 +598,7 @@ HTML_PAGE = """<!doctype html>
         `clip=${item.clip_id || "unknown"} | frame=${item.frame_index} | view=${item.source_view || "unknown"}`,
         `athlete=${item.athlete_id || "unknown"} | session=${item.session_id || "unknown"}`,
         `image=${item.image_path}`,
+        `playback=${state.isPlaying ? "playing" : "paused"} | fps=${state.playbackFps}`,
       ];
       if (state.frameError) {
         lines.push(`frame_error=${state.frameError}`);
@@ -546,6 +610,7 @@ HTML_PAGE = """<!doctype html>
       const position = filteredPosition();
       prevBtn.disabled = position <= 0;
       nextBtn.disabled = position < 0 || position >= state.filteredItems.length - 1;
+      restartBtn.disabled = !state.filteredItems.length;
     }
 
     function renderClipFilter() {
@@ -594,6 +659,74 @@ HTML_PAGE = """<!doctype html>
         : "已加载评估报告";
     }
 
+    function estimateFrameStep(items) {
+      const steps = [];
+      for (let i = 1; i < items.length; i += 1) {
+        const previous = items[i - 1];
+        const current = items[i];
+        if (previous.clip_id !== current.clip_id || previous.source_view !== current.source_view) {
+          continue;
+        }
+        const step = Number(current.frame_index) - Number(previous.frame_index);
+        if (step > 0) {
+          steps.push(step);
+        }
+      }
+      if (!steps.length) {
+        return 1;
+      }
+      steps.sort((left, right) => left - right);
+      return steps[Math.floor(steps.length / 2)] || 1;
+    }
+
+    function renderPlaybackControls() {
+      playPauseBtn.textContent = state.isPlaying ? "暂停播放" : "开始播放";
+      loopBtn.textContent = `循环: ${state.loopPlayback ? "开" : "关"}`;
+      playPauseBtn.disabled = state.filteredItems.length <= 1;
+      loopBtn.disabled = !state.filteredItems.length;
+      playbackFpsValueEl.textContent = `${state.playbackFps} FPS`;
+    }
+
+    function renderPlaybackHint() {
+      const step = estimateFrameStep(state.filteredItems);
+      const cadenceNote = step > 1
+        ? `当前预测序列大约每 ${step} 帧采样一次，所以这是抽帧回放，不是原视频逐帧重建。`
+        : "当前序列接近逐帧预测，更适合连续播放观看。";
+      const playNote = state.isPlaying
+        ? `正在以 ${state.playbackFps} FPS 连续播放。`
+        : `准备以 ${state.playbackFps} FPS 播放。`;
+      const modeNote = state.playerMode
+        ? "播放器模式会按当前 clip 自动连续播放，并隐藏右侧长帧列表。"
+        : "检查器模式保留完整帧列表，适合逐帧排查。";
+      playbackHintEl.textContent =
+        `${modeNote} ${cadenceNote} ${playNote} 低于阈值的关键点和骨架连线会被淡化，可见性为 0 的点会继续显示为弱提示。`;
+    }
+
+    function applyModeUi() {
+      document.body.classList.toggle("player-mode", state.playerMode);
+      frameListSectionEl.hidden = state.playerMode;
+    }
+
+    function updateTimelineControl() {
+      const total = state.filteredItems.length;
+      const position = filteredPosition();
+      timelineInputEl.max = String(Math.max(total - 1, 0));
+      timelineInputEl.disabled = !total;
+      timelineInputEl.value = String(Math.max(position, 0));
+      timelineValueEl.textContent = total ? `${Math.max(position + 1, 1)} / ${total}` : "0 / 0";
+    }
+
+    function syncActiveFrameRow() {
+      const previous = frameListEl.querySelector(".frame-row.active");
+      if (previous) {
+        previous.classList.remove("active");
+      }
+      const current = frameListEl.querySelector(`[data-index="${state.currentIndex}"]`);
+      if (current) {
+        current.classList.add("active");
+      }
+    }
+
     function renderFrameList() {
       if (!state.filteredItems.length) {
         frameListEl.innerHTML = '<div class="empty-state">当前筛选条件下没有可浏览的帧。</div>';
@@ -614,6 +747,7 @@ HTML_PAGE = """<!doctype html>
       frameListEl.querySelectorAll("[data-index]").forEach((node) => {
         node.addEventListener("click", () => selectFrame(Number(node.dataset.index)));
       });
+      syncActiveFrameRow();
     }
 
     function renderKeypointList() {
@@ -735,53 +869,166 @@ HTML_PAGE = """<!doctype html>
     }
 
     function renderAll() {
+      applyModeUi();
       renderSidebarMeta();
       renderViewerMeta();
       renderCounter();
       updateNavigationButtons();
-      renderOverallMetrics();
+      renderPlaybackControls();
+      renderPlaybackHint();
+      updateTimelineControl();
       renderKeypointList();
-      renderFrameList();
+      syncActiveFrameRow();
       drawCanvas();
     }
 
     function applyFilter(clipId) {
+      stopPlayback();
       state.selectedClip = clipId;
       state.filteredItems = clipId === "__all__"
         ? [...state.items]
         : state.items.filter((item) => item.clip_id === clipId);
+      renderPlaybackHint();
+      renderPlaybackControls();
+      updateTimelineControl();
       renderCounter();
       updateNavigationButtons();
       renderFrameList();
     }
 
-    function preloadFrame(index) {
-      return new Promise((resolve) => {
-        state.frameError = "";
+    function trimImageCache(preserve = []) {
+      const preserveSet = new Set(preserve);
+      while (state.imageCache.size > IMAGE_CACHE_LIMIT) {
+        const oldestKey = state.imageCache.keys().next().value;
+        if (preserveSet.has(oldestKey)) {
+          const value = state.imageCache.get(oldestKey);
+          state.imageCache.delete(oldestKey);
+          state.imageCache.set(oldestKey, value);
+          continue;
+        }
+        state.imageCache.delete(oldestKey);
+      }
+    }
+
+    function loadImageForIndex(index) {
+      if (state.imageCache.has(index)) {
+        return state.imageCache.get(index);
+      }
+      const promise = new Promise((resolve) => {
         const nextImage = new Image();
-        nextImage.onload = () => {
-          state.image = nextImage;
-          setError("");
-          resolve();
-        };
+        nextImage.onload = () => resolve({ image: nextImage, error: "" });
         nextImage.onerror = () => {
-          state.frameError = `无法加载当前帧图像: ${currentItem()?.image_path || ""}`;
-          setError(state.frameError);
-          state.image = new Image();
-          resolve();
+          const item = state.items[index];
+          resolve({
+            image: new Image(),
+            error: `无法加载当前帧图像: ${item?.image_path || ""}`,
+          });
         };
         nextImage.src = `/api/frame?index=${index}`;
       });
+      state.imageCache.set(index, promise);
+      trimImageCache([state.currentIndex, index]);
+      return promise;
     }
 
-    async function selectFrame(index) {
+    function primePlaybackCache(index) {
+      const position = state.filteredItems.findIndex((item) => item.index === index);
+      if (position < 0) {
+        return;
+      }
+      const preserve = [index];
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const nextItem = state.filteredItems[position + offset];
+        if (!nextItem) {
+          continue;
+        }
+        preserve.push(nextItem.index);
+        void loadImageForIndex(nextItem.index);
+      }
+      trimImageCache(preserve);
+    }
+
+    async function preloadFrame(index) {
+      state.frameError = "";
+      const result = await loadImageForIndex(index);
+      if (result.error) {
+        state.frameError = result.error;
+        setError(state.frameError);
+        state.image = new Image();
+        return false;
+      }
+      state.image = result.image;
+      setError("");
+      primePlaybackCache(index);
+      return true;
+    }
+
+    function stopPlayback() {
+      if (state.playbackTimer) {
+        window.clearTimeout(state.playbackTimer);
+        state.playbackTimer = null;
+      }
+      state.isPlaying = false;
+      renderPlaybackControls();
+      renderPlaybackHint();
+      renderViewerMeta();
+    }
+
+    function schedulePlaybackTick() {
+      if (!state.isPlaying) {
+        return;
+      }
+      if (state.playbackTimer) {
+        window.clearTimeout(state.playbackTimer);
+      }
+      state.playbackTimer = window.setTimeout(async () => {
+        const position = filteredPosition();
+        if (position < 0) {
+          stopPlayback();
+          return;
+        }
+        let nextPosition = position + 1;
+        if (nextPosition >= state.filteredItems.length) {
+          if (!state.loopPlayback) {
+            stopPlayback();
+            return;
+          }
+          nextPosition = 0;
+        }
+        await selectFrame(state.filteredItems[nextPosition].index, { preservePlayback: true });
+      }, Math.max(16, 1000 / state.playbackFps));
+    }
+
+    function startPlayback() {
+      if (state.filteredItems.length <= 1) {
+        return;
+      }
+      state.isPlaying = true;
+      renderPlaybackControls();
+      renderPlaybackHint();
+      renderViewerMeta();
+      schedulePlaybackTick();
+    }
+
+    async function selectFrame(index, options = {}) {
+      const preservePlayback = options.preservePlayback === true;
       try {
+        if (!preservePlayback) {
+          stopPlayback();
+        }
         setError("");
         state.currentIndex = index;
         state.prediction = await fetchJson(`/api/item?index=${index}`);
-        await preloadFrame(index);
+        const imageLoaded = await preloadFrame(index);
         renderAll();
+        if (preservePlayback && imageLoaded) {
+          schedulePlaybackTick();
+        }
+        if (preservePlayback && !imageLoaded) {
+          stopPlayback();
+        }
       } catch (error) {
+        stopPlayback();
         state.prediction = null;
         state.frameError = "";
         setError(error.message);
@@ -797,14 +1044,27 @@ HTML_PAGE = """<!doctype html>
     async function loadSession() {
       state.sessionMeta = await fetchJson("/api/list");
       state.items = state.sessionMeta.items || [];
+      state.playerMode = state.sessionMeta.player_mode === true;
+      if (state.sessionMeta.initial_clip) {
+        state.initialClip = state.sessionMeta.initial_clip;
+      }
       if (!state.items.length) {
         setError("预测文件中没有可显示的结果。");
         renderAll();
         return;
       }
       renderClipFilter();
-      applyFilter("__all__");
-      await selectFrame(state.items[0].index);
+      const desiredClip = state.playerMode
+        ? (state.initialClip || state.sessionMeta.clips?.[0] || "__all__")
+        : "__all__";
+      applyFilter(desiredClip);
+      const firstItem = state.filteredItems[0] || state.items[0];
+      if (firstItem) {
+        await selectFrame(firstItem.index);
+      }
+      if (state.playerMode && state.filteredItems.length > 1) {
+        startPlayback();
+      }
     }
 
     prevBtn.addEventListener("click", async () => {
@@ -821,6 +1081,35 @@ HTML_PAGE = """<!doctype html>
       }
     });
 
+    playPauseBtn.addEventListener("click", async () => {
+      if (state.isPlaying) {
+        stopPlayback();
+        return;
+      }
+      if (state.currentIndex < 0 && state.filteredItems.length) {
+        await selectFrame(state.filteredItems[0].index);
+      }
+      startPlayback();
+    });
+
+    restartBtn.addEventListener("click", async () => {
+      if (!state.filteredItems.length) {
+        return;
+      }
+      const shouldResume = state.isPlaying;
+      stopPlayback();
+      await selectFrame(state.filteredItems[0].index);
+      if (shouldResume) {
+        startPlayback();
+      }
+    });
+
+    loopBtn.addEventListener("click", () => {
+      state.loopPlayback = !state.loopPlayback;
+      renderPlaybackControls();
+      renderPlaybackHint();
+    });
+
     clipFilterEl.addEventListener("change", async (event) => {
       applyFilter(event.target.value);
       if (!state.filteredItems.length) {
@@ -830,8 +1119,33 @@ HTML_PAGE = """<!doctype html>
         renderAll();
         return;
       }
+      if (state.playerMode) {
+        await selectFrame(state.filteredItems[0].index);
+        if (state.filteredItems.length > 1) {
+          startPlayback();
+        }
+        return;
+      }
       const stillVisible = state.filteredItems.some((item) => item.index === state.currentIndex);
       await selectFrame((stillVisible ? currentItem() : state.filteredItems[0]).index);
+    });
+
+    playbackFpsInputEl.addEventListener("input", () => {
+      state.playbackFps = Number(playbackFpsInputEl.value);
+      renderPlaybackControls();
+      renderPlaybackHint();
+      renderViewerMeta();
+      if (state.isPlaying) {
+        schedulePlaybackTick();
+      }
+    });
+
+    timelineInputEl.addEventListener("change", async () => {
+      const position = Number(timelineInputEl.value);
+      const item = state.filteredItems[position];
+      if (item) {
+        await selectFrame(item.index);
+      }
     });
 
     thresholdInputEl.addEventListener("input", () => {
@@ -853,8 +1167,17 @@ HTML_PAGE = """<!doctype html>
         event.preventDefault();
         nextBtn.click();
       }
+      if (event.code === "Space") {
+        event.preventDefault();
+        playPauseBtn.click();
+      }
+      if (event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        restartBtn.click();
+      }
     });
 
+    playbackFpsValueEl.textContent = `${state.playbackFps} FPS`;
     thresholdValueEl.textContent = formatNumber(state.threshold, 2);
     drawEmptyCanvas("正在初始化查看器");
 
@@ -876,10 +1199,14 @@ class PredictionWebApp:
         predictions_path: str | Path,
         frame_root: str | Path,
         report_path: str | Path | None = None,
+        initial_clip: str | None = None,
+        player_mode: bool = False,
     ) -> None:
         self.predictions_path = Path(predictions_path).resolve()
         self.frame_root = Path(frame_root).resolve()
         self.report_path = Path(report_path).resolve() if report_path is not None else None
+        self.initial_clip = initial_clip or ""
+        self.player_mode = player_mode
 
         if not self.predictions_path.exists():
             raise FileNotFoundError(f"Predictions file not found: {self.predictions_path}")
@@ -894,6 +1221,8 @@ class PredictionWebApp:
         self.predictions = self._load_predictions()
         self.items = self._build_items()
         self.clips = sorted({item["clip_id"] for item in self.items if item["clip_id"]})
+        if self.initial_clip and self.initial_clip not in self.clips:
+            raise ValueError(f"Unknown clip for player mode: {self.initial_clip}")
 
     def _load_predictions(self) -> list[dict]:
         rows = read_jsonl(self.predictions_path)
@@ -984,6 +1313,8 @@ class PredictionWebApp:
             "prediction_file": self.predictions_path.name,
             "report_file": self.report_path.name if self.report_path else "",
             "report_available": self.report is not None,
+            "player_mode": self.player_mode,
+            "initial_clip": self.initial_clip,
         }
 
     def load_prediction(self, index: int) -> dict:
@@ -1040,6 +1371,8 @@ def run_prediction_web(
     predictions_path: str | Path,
     frame_root: str | Path,
     report_path: str | Path | None = None,
+    initial_clip: str | None = None,
+    player_mode: bool = False,
     host: str = "127.0.0.1",
     port: int = 8766,
     open_browser: bool = True,
@@ -1048,6 +1381,8 @@ def run_prediction_web(
         predictions_path=predictions_path,
         frame_root=frame_root,
         report_path=report_path,
+        initial_clip=initial_clip,
+        player_mode=player_mode,
     )
     handler = _build_handler(app)
     server = ThreadingHTTPServer((host, port), handler)
@@ -1076,6 +1411,8 @@ def _build_handler(app: PredictionWebApp) -> type[BaseHTTPRequestHandler]:
             "__VISIBILITY_STATES__",
             json.dumps({str(key): value for key, value in VISIBILITY_STATES.items()}, ensure_ascii=False),
         )
+        .replace("__INITIAL_PLAYER_MODE__", json.dumps(app.player_mode))
+        .replace("__INITIAL_CLIP__", json.dumps(app.initial_clip, ensure_ascii=False))
     )
 
     class Handler(BaseHTTPRequestHandler):

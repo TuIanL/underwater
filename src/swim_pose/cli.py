@@ -138,6 +138,8 @@ def build_parser() -> argparse.ArgumentParser:
     predictions_web.add_argument("--predictions", required=True)
     predictions_web.add_argument("--frame-root", required=True)
     predictions_web.add_argument("--report")
+    predictions_web.add_argument("--clip")
+    predictions_web.add_argument("--player-mode", action="store_true")
     predictions_web.add_argument("--host", default="127.0.0.1")
     predictions_web.add_argument("--port", type=int, default=8766)
     predictions_web.add_argument("--no-browser", action="store_true")
@@ -338,6 +340,8 @@ def _handle_predictions_web(args: argparse.Namespace) -> None:
             predictions_path=resolve_repo_managed_path(args.predictions),
             frame_root=resolve_repo_managed_path(args.frame_root),
             report_path=resolve_repo_managed_path(args.report) if args.report else None,
+            initial_clip=args.clip,
+            player_mode=args.player_mode,
             host=args.host,
             port=args.port,
             open_browser=not args.no_browser,
