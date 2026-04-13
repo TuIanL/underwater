@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .io import read_csv_rows, write_csv_rows
+from .pathing import require_repo_root, resolve_persisted_source_path, serialize_workspace_path
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 MANIFEST_FIELDS = [
@@ -59,6 +60,7 @@ class ClipManifestEntry:
 
 def discover_manifest(video_root: str | Path) -> list[ClipManifestEntry]:
     root = Path(video_root)
+    repo_root = require_repo_root()
     grouped: dict[str, ClipManifestEntry] = {}
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
@@ -74,7 +76,7 @@ def discover_manifest(video_root: str | Path) -> list[ClipManifestEntry]:
                 session_id=session_id,
             ),
         )
-        resolved = str(path)
+        resolved = serialize_workspace_path(path, repo_root)
         if view == "above":
             entry.raw_above_path = resolved
         elif view == "under":
@@ -125,6 +127,35 @@ def audit_manifest(path: str | Path) -> list[dict[str, str]]:
     return audited
 
 
+def migrate_manifest_paths(
+    path: str | Path,
+    output_path: str | Path | None = None,
+    legacy_base: str | Path | None = None,
+) -> tuple[Path, dict[str, int]]:
+    repo_root = require_repo_root()
+    rows = read_manifest(path)
+    fieldnames = list(rows[0].keys()) if rows else MANIFEST_FIELDS
+    legacy_root = Path(legacy_base).expanduser().resolve() if legacy_base else None
+    migrated_rows: list[dict[str, str]] = []
+    updated_fields = 0
+
+    for row in rows:
+        migrated_row = dict(row)
+        for field in ("raw_above_path", "raw_under_path", "stitched_path"):
+            original = row.get(field, "").strip()
+            if not original:
+                continue
+            migrated = _migrate_manifest_field(original, repo_root=repo_root, legacy_root=legacy_root)
+            if migrated != original:
+                updated_fields += 1
+            migrated_row[field] = migrated
+        migrated_rows.append(migrated_row)
+
+    destination = Path(output_path) if output_path is not None else Path(path)
+    write_csv_rows(destination, fieldnames, migrated_rows)
+    return Path(destination), {"rows": len(rows), "updated_fields": updated_fields}
+
+
 def classify_view(stem: str) -> str:
     normalized = stem.lower()
     for view, markers in _VIEW_MARKERS.items():
@@ -165,7 +196,7 @@ def determine_primary_view(entry: ClipManifestEntry) -> str:
 def probe_video(path: str) -> dict[str, float | int]:
     if not path:
         return {}
-    resolved = Path(path)
+    resolved = resolve_persisted_source_path(path)
     if not resolved.exists():
         return {}
 
@@ -258,3 +289,25 @@ def _probe_video_with_opencv(path: Path) -> dict[str, float | int]:
     if duration > 0:
         metadata["duration_s"] = duration
     return metadata
+
+
+def _migrate_manifest_field(value: str, repo_root: Path, legacy_root: Path | None) -> str:
+    original = Path(value).expanduser()
+    if original.is_absolute():
+        return serialize_workspace_path(original, repo_root)
+
+    repo_candidate = (repo_root / original).resolve()
+    if repo_candidate.exists():
+        return serialize_workspace_path(repo_candidate, repo_root)
+
+    if legacy_root is not None:
+        legacy_candidate = (legacy_root / original).resolve()
+        if legacy_candidate.exists():
+            return serialize_workspace_path(legacy_candidate, repo_root)
+
+    raise FileNotFoundError(
+        f"Could not migrate relative manifest path '{value}'. "
+        "It does not resolve under the repository root"
+        + ("" if legacy_root is None else f" or legacy base '{legacy_root}'")
+        + "."
+    )

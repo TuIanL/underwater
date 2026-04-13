@@ -9,6 +9,7 @@ from torch.utils.data import Dataset
 from ..annotations import validate_annotation
 from ..constants import KEYPOINT_NAMES
 from ..io import read_csv_rows, read_json
+from ..pathing import find_repo_root, resolve_repo_managed_path
 
 
 class PoseDataset(Dataset):
@@ -23,6 +24,7 @@ class PoseDataset(Dataset):
         self.image_root = Path(image_root)
         self.input_size = input_size
         self.heatmap_size = heatmap_size
+        self.repo_root = find_repo_root()
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -31,7 +33,7 @@ class PoseDataset(Dataset):
         import torch
 
         row = self.rows[index]
-        annotation = read_json(row["annotation_path"])
+        annotation = read_json(resolve_repo_managed_path(row["annotation_path"], self.repo_root))
         errors = validate_annotation(annotation)
         if errors:
             raise ValueError(f"Invalid annotation {row['annotation_path']}: {'; '.join(errors)}")

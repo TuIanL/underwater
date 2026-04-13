@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .constants import FRAME_STATUSES, KEYPOINT_NAMES, SOURCE_VIEWS, VISIBILITY_STATES
 from .io import ensure_parent, read_csv_rows, read_json, write_csv_rows, write_json
+from .pathing import find_repo_root, serialize_workspace_path
 
 
 ANNOTATION_INDEX_FIELDS = [
@@ -106,6 +107,7 @@ def validate_file(path: str | Path) -> list[str]:
 
 def build_annotation_index(annotation_root: str | Path, output_path: str | Path) -> Path:
     root = Path(annotation_root)
+    repo_root = find_repo_root(root)
     rows: list[dict[str, object]] = []
     for annotation_path in sorted(root.rglob("*.json")):
         data = read_json(annotation_path)
@@ -118,7 +120,7 @@ def build_annotation_index(annotation_root: str | Path, output_path: str | Path)
             continue
         rows.append(
             {
-                "annotation_path": str(annotation_path),
+                "annotation_path": serialize_workspace_path(annotation_path, repo_root),
                 "image_path": data.get("image_path", ""),
                 "clip_id": data.get("clip_id", ""),
                 "athlete_id": data.get("athlete_id", ""),

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 
+from .pathing import resolve_repo_managed_path, resolve_source_input_path
+
 
 def main() -> None:
     parser = build_parser()
@@ -32,6 +34,17 @@ def build_parser() -> argparse.ArgumentParser:
     manifest_audit.add_argument("--manifest", required=True)
     manifest_audit.add_argument("--output", required=True)
     manifest_audit.set_defaults(handler=_handle_manifest_audit)
+
+    manifest_migrate = manifest_sub.add_parser(
+        "migrate-paths",
+        help="Migrate manifest source paths to repository-relative or absolute form.",
+    )
+    manifest_migrate.add_argument("--manifest", required=True)
+    manifest_target = manifest_migrate.add_mutually_exclusive_group(required=True)
+    manifest_target.add_argument("--output")
+    manifest_target.add_argument("--in-place", action="store_true")
+    manifest_migrate.add_argument("--legacy-base")
+    manifest_migrate.set_defaults(handler=_handle_manifest_migrate_paths)
 
     frames_parser = subparsers.add_parser("frames", help="Extract frame images from manifest videos.")
     frames_sub = frames_parser.add_subparsers(dest="frames_command")
@@ -118,6 +131,18 @@ def build_parser() -> argparse.ArgumentParser:
     train_semi.add_argument("--config", required=True)
     train_semi.set_defaults(handler=_handle_train_semisupervised)
 
+    predictions_parser = subparsers.add_parser("predictions", help="Prediction result browsing utilities.")
+    predictions_sub = predictions_parser.add_subparsers(dest="predictions_command")
+
+    predictions_web = predictions_sub.add_parser("web", help="Open a browser-based prediction viewer.")
+    predictions_web.add_argument("--predictions", required=True)
+    predictions_web.add_argument("--frame-root", required=True)
+    predictions_web.add_argument("--report")
+    predictions_web.add_argument("--host", default="127.0.0.1")
+    predictions_web.add_argument("--port", type=int, default=8766)
+    predictions_web.add_argument("--no-browser", action="store_true")
+    predictions_web.set_defaults(handler=_handle_predictions_web)
+
     predict_parser = subparsers.add_parser("predict", help="Run model inference and export keypoint predictions.")
     predict_parser.add_argument("--config", required=True)
     predict_parser.add_argument("--checkpoint", required=True)
@@ -147,27 +172,48 @@ def build_parser() -> argparse.ArgumentParser:
 def _handle_manifest_init(args: argparse.Namespace) -> None:
     from .manifest import discover_manifest, write_manifest
 
-    entries = discover_manifest(args.video_root)
-    write_manifest(args.output, entries)
-    print(f"Wrote {len(entries)} manifest rows to {args.output}")
+    video_root = resolve_source_input_path(args.video_root)
+    output_path = resolve_repo_managed_path(args.output)
+    entries = discover_manifest(video_root)
+    write_manifest(output_path, entries)
+    print(f"Wrote {len(entries)} manifest rows to {output_path}")
 
 
 def _handle_manifest_audit(args: argparse.Namespace) -> None:
     from .io import write_csv_rows
     from .manifest import MANIFEST_FIELDS, audit_manifest
 
-    rows = audit_manifest(args.manifest)
-    write_csv_rows(args.output, MANIFEST_FIELDS, rows)
-    print(f"Wrote audited manifest with {len(rows)} rows to {args.output}")
+    manifest_path = resolve_repo_managed_path(args.manifest)
+    output_path = resolve_repo_managed_path(args.output)
+    rows = audit_manifest(manifest_path)
+    write_csv_rows(output_path, MANIFEST_FIELDS, rows)
+    print(f"Wrote audited manifest with {len(rows)} rows to {output_path}")
+
+
+def _handle_manifest_migrate_paths(args: argparse.Namespace) -> None:
+    from .manifest import migrate_manifest_paths
+
+    manifest_path = resolve_repo_managed_path(args.manifest)
+    output_path = None if args.in_place else resolve_repo_managed_path(args.output)
+    legacy_base = resolve_source_input_path(args.legacy_base) if args.legacy_base else None
+    destination, summary = migrate_manifest_paths(
+        path=manifest_path,
+        output_path=output_path,
+        legacy_base=legacy_base,
+    )
+    print(
+        "Migrated manifest paths to "
+        f"{destination} ({summary['updated_fields']} updated fields across {summary['rows']} rows)"
+    )
 
 
 def _handle_frames_extract(args: argparse.Namespace) -> None:
     from .frames import extract_frames_from_manifest
 
     destination = extract_frames_from_manifest(
-        manifest_path=args.manifest,
-        output_root=args.output_root,
-        index_output=args.index_output,
+        manifest_path=resolve_repo_managed_path(args.manifest),
+        output_root=resolve_repo_managed_path(args.output_root),
+        index_output=resolve_repo_managed_path(args.index_output),
         views=tuple(args.views),
         every_nth=args.every_nth,
     )
@@ -177,37 +223,46 @@ def _handle_frames_extract(args: argparse.Namespace) -> None:
 def _handle_annotation_template(args: argparse.Namespace) -> None:
     from .annotations import write_template
 
-    destination = write_template(args.output)
+    destination = write_template(resolve_repo_managed_path(args.output))
     print(f"Wrote annotation template to {destination}")
 
 
 def _handle_annotation_validate(args: argparse.Namespace) -> None:
     from .annotations import validate_file
 
-    errors = validate_file(args.input)
+    input_path = resolve_repo_managed_path(args.input)
+    errors = validate_file(input_path)
     if errors:
         raise SystemExit("Validation failed:\n- " + "\n- ".join(errors))
-    print(f"{args.input} is valid")
+    print(f"{input_path} is valid")
 
 
 def _handle_annotation_index(args: argparse.Namespace) -> None:
     from .annotations import build_annotation_index
 
-    destination = build_annotation_index(args.annotation_root, args.output)
+    destination = build_annotation_index(
+        resolve_repo_managed_path(args.annotation_root),
+        resolve_repo_managed_path(args.output),
+    )
     print(f"Wrote annotation index to {destination}")
 
 
 def _handle_annotation_scaffold(args: argparse.Namespace) -> None:
     from .annotations import scaffold_annotations
 
-    created = scaffold_annotations(args.seed_csv, args.frame_root, args.output_root)
-    print(f"Created {len(created)} scaffold annotation files in {args.output_root}")
+    output_root = resolve_repo_managed_path(args.output_root)
+    created = scaffold_annotations(
+        resolve_repo_managed_path(args.seed_csv),
+        resolve_repo_managed_path(args.frame_root),
+        output_root,
+    )
+    print(f"Created {len(created)} scaffold annotation files in {output_root}")
 
 
 def _handle_annotation_gui(args: argparse.Namespace) -> None:
     from .annotation_gui import AnnotationGui
 
-    app = AnnotationGui(args.annotation_root, args.frame_root)
+    app = AnnotationGui(resolve_repo_managed_path(args.annotation_root), resolve_repo_managed_path(args.frame_root))
     app.run()
 
 
@@ -215,8 +270,8 @@ def _handle_annotation_web(args: argparse.Namespace) -> None:
     from .annotation_web import run_annotation_web
 
     run_annotation_web(
-        annotation_root=args.annotation_root,
-        frame_root=args.frame_root,
+        annotation_root=resolve_repo_managed_path(args.annotation_root),
+        frame_root=resolve_repo_managed_path(args.frame_root),
         host=args.host,
         port=args.port,
         open_browser=not args.no_browser,
@@ -226,7 +281,10 @@ def _handle_annotation_web(args: argparse.Namespace) -> None:
 def _handle_annotation_audit(args: argparse.Namespace) -> None:
     from .audit import audit_annotations
 
-    destination = audit_annotations(args.annotation_root, args.output)
+    destination = audit_annotations(
+        resolve_repo_managed_path(args.annotation_root),
+        resolve_repo_managed_path(args.output),
+    )
     print(f"Wrote annotation audit to {destination}")
 
 
@@ -234,8 +292,8 @@ def _handle_seed_select(args: argparse.Namespace) -> None:
     from .sampling import select_seed_frames
 
     destination = select_seed_frames(
-        manifest_path=args.manifest,
-        output_path=args.output,
+        manifest_path=resolve_repo_managed_path(args.manifest),
+        output_path=resolve_repo_managed_path(args.output),
         frames_per_clip=args.frames_per_clip,
         source_view=args.source_view,
         seed=args.seed,
@@ -247,8 +305,8 @@ def _handle_dataset_split(args: argparse.Namespace) -> None:
     from .sampling import create_group_splits
 
     destinations = create_group_splits(
-        index_path=args.index,
-        output_dir=args.output_dir,
+        index_path=resolve_repo_managed_path(args.index),
+        output_dir=resolve_repo_managed_path(args.output_dir),
         group_by=tuple(args.group_by),
         val_ratio=args.val_ratio,
         test_ratio=args.test_ratio,
@@ -261,25 +319,41 @@ def _handle_dataset_split(args: argparse.Namespace) -> None:
 def _handle_train_supervised(args: argparse.Namespace) -> None:
     from .training.supervised import run_supervised_training
 
-    checkpoint = run_supervised_training(args.config)
+    checkpoint = run_supervised_training(resolve_repo_managed_path(args.config))
     print(f"Saved supervised checkpoint to {checkpoint}")
 
 
 def _handle_train_semisupervised(args: argparse.Namespace) -> None:
     from .training.semisupervised import run_semi_supervised_training
 
-    checkpoint = run_semi_supervised_training(args.config)
+    checkpoint = run_semi_supervised_training(resolve_repo_managed_path(args.config))
     print(f"Saved semi-supervised checkpoint to {checkpoint}")
+
+
+def _handle_predictions_web(args: argparse.Namespace) -> None:
+    from .prediction_web import run_prediction_web
+
+    try:
+        run_prediction_web(
+            predictions_path=resolve_repo_managed_path(args.predictions),
+            frame_root=resolve_repo_managed_path(args.frame_root),
+            report_path=resolve_repo_managed_path(args.report) if args.report else None,
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_browser,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _handle_predict(args: argparse.Namespace) -> None:
     from .training.inference import run_inference
 
     destination = run_inference(
-        config_path=args.config,
-        checkpoint_path=args.checkpoint,
-        index_path=args.index,
-        output_path=args.output,
+        config_path=resolve_repo_managed_path(args.config),
+        checkpoint_path=resolve_repo_managed_path(args.checkpoint),
+        index_path=resolve_repo_managed_path(args.index),
+        output_path=resolve_repo_managed_path(args.output),
         labeled=not args.unlabeled,
     )
     print(f"Wrote predictions to {destination}")
@@ -288,14 +362,22 @@ def _handle_predict(args: argparse.Namespace) -> None:
 def _handle_evaluate(args: argparse.Namespace) -> None:
     from .training.evaluate import evaluate_predictions_file
 
-    destination = evaluate_predictions_file(args.predictions, args.annotations, args.output)
+    destination = evaluate_predictions_file(
+        resolve_repo_managed_path(args.predictions),
+        resolve_repo_managed_path(args.annotations),
+        resolve_repo_managed_path(args.output),
+    )
     print(f"Wrote evaluation report to {destination}")
 
 
 def _handle_pseudolabel_generate(args: argparse.Namespace) -> None:
     from .training.pseudolabels import generate_pseudolabel_file
 
-    destination = generate_pseudolabel_file(args.predictions, args.output, args.threshold)
+    destination = generate_pseudolabel_file(
+        resolve_repo_managed_path(args.predictions),
+        resolve_repo_managed_path(args.output),
+        args.threshold,
+    )
     print(f"Wrote pseudolabels to {destination}")
 
 

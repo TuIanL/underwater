@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .io import read_csv_rows, write_csv_rows
+from .pathing import resolve_persisted_source_path
 
 UNLABELED_INDEX_FIELDS = [
     "image_path",
@@ -77,10 +78,13 @@ def extract_frames_from_manifest(
 
 
 def _video_path_for_view(row: dict[str, str], view: str) -> str:
+    value = ""
     if view == "above":
-        return row.get("raw_above_path", "")
-    if view == "under":
-        return row.get("raw_under_path", "")
-    if view == "stitched":
-        return row.get("stitched_path", "")
-    return ""
+        value = row.get("raw_above_path", "")
+    elif view == "under":
+        value = row.get("raw_under_path", "")
+    elif view == "stitched":
+        value = row.get("stitched_path", "")
+    if not value:
+        return ""
+    return str(resolve_persisted_source_path(value))

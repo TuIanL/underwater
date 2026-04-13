@@ -14,29 +14,70 @@ This repository contains the current implementation pass for breaststroke 2D key
 ## Quickstart
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install -e .
+uv sync --locked
 ```
+
+The documented workflow uses `uv run ...`, so you do not need to manually activate `.venv` first. Supported commands are expected to work from the repository root and from subdirectories inside the repository.
 
 ## Common Commands
 
 ```bash
-swim-pose manifest init --video-root data/raw/videos --output data/manifests/clips.csv
-swim-pose manifest audit --manifest data/manifests/clips.csv --output data/manifests/clips.audit.csv
-swim-pose frames extract --manifest data/manifests/clips.audit.csv --output-root data/frames --index-output data/manifests/unlabeled_index.csv --views stitched --every-nth 5
-swim-pose annotations template --output data/templates/frame_annotation.example.json
-swim-pose annotations validate --input data/templates/frame_annotation.example.json
-swim-pose seed select --manifest data/manifests/clips.audit.csv --output data/manifests/seed_frames.csv --source-view stitched
-swim-pose annotations scaffold --seed-csv data/manifests/seed_frames.csv --frame-root data/frames --output-root data/annotations/seed
-swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames
-swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json
-swim-pose dataset split --index data/manifests/annotation_index.csv --output-dir data/manifests/splits
-swim-pose train supervised --config configs/supervised.toml
-swim-pose predict --config configs/supervised.toml --checkpoint artifacts/checkpoints/supervised/best.pt --index data/manifests/splits/val.csv --output artifacts/predictions/val_predictions.jsonl
-swim-pose evaluate --predictions artifacts/predictions/val_predictions.jsonl --annotations data/manifests/splits/val.csv --output artifacts/reports/val_metrics.json
-swim-pose pseudolabel generate --predictions artifacts/predictions/val_predictions.jsonl --output artifacts/predictions/pseudolabels.jsonl
-swim-pose train semisupervised --config configs/semi_supervised.toml
+uv run swim-pose manifest init --video-root data/raw/videos --output data/manifests/clips.csv
+uv run swim-pose manifest audit --manifest data/manifests/clips.csv --output data/manifests/clips.audit.csv
+uv run swim-pose frames extract --manifest data/manifests/clips.audit.csv --output-root data/frames --index-output data/manifests/unlabeled_index.csv --views stitched --every-nth 5
+uv run swim-pose annotations template --output data/templates/frame_annotation.example.json
+uv run swim-pose annotations validate --input data/templates/frame_annotation.example.json
+uv run swim-pose seed select --manifest data/manifests/clips.audit.csv --output data/manifests/seed_frames.csv --source-view stitched
+uv run swim-pose annotations scaffold --seed-csv data/manifests/seed_frames.csv --frame-root data/frames --output-root data/annotations/seed
+uv run swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames
+uv run swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json
+uv run swim-pose dataset split --index data/manifests/annotation_index.csv --output-dir data/manifests/splits
+uv run swim-pose train supervised --config configs/supervised.toml
+uv run swim-pose predict --config configs/supervised.toml --checkpoint artifacts/checkpoints/supervised/best.pt --index data/manifests/splits/val.csv --output artifacts/predictions/val_predictions.jsonl
+uv run swim-pose evaluate --predictions artifacts/predictions/val_predictions.jsonl --annotations data/manifests/splits/val.csv --output artifacts/reports/val_metrics.json
+uv run swim-pose predictions web --predictions artifacts/predictions/supervised_labeled_predictions.jsonl --frame-root data/frames --report artifacts/reports/supervised_eval.json
+uv run swim-pose pseudolabel generate --predictions artifacts/predictions/val_predictions.jsonl --output artifacts/predictions/pseudolabels.jsonl
+uv run swim-pose train semisupervised --config configs/semi_supervised.toml
+```
+
+## Prediction Viewer
+
+After `predict`, you can inspect one model's results in a local browser UI:
+
+```bash
+uv run swim-pose predictions web \
+  --predictions artifacts/predictions/supervised_labeled_predictions.jsonl \
+  --frame-root data/frames \
+  --report artifacts/reports/supervised_eval.json
+```
+
+What the viewer shows:
+
+- the original frame with the predicted 18-point skeleton overlay
+- clip and frame navigation for browsing one prediction file
+- per-keypoint coordinates, confidence, and visibility values
+- optional overall and per-joint metrics when a report JSON is provided
+
+If you only want qualitative inspection, `--report` is optional:
+
+```bash
+uv run swim-pose predictions web \
+  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
+  --frame-root data/frames
+```
+
+## Path Rules
+
+- Relative config, checkpoint, manifest, report, and output paths are interpreted from the repository root.
+- Frame references stored inside annotations and frame indices stay relative to the configured `frame_root` / `image_root`.
+- Manifest source video paths are stored repository-relative when the videos live inside the repository, and absolute when they live outside it.
+- If you have an older manifest with caller-relative paths such as `../videos/...`, migrate it before use:
+
+```bash
+uv run swim-pose manifest migrate-paths \
+  --manifest data/manifests/clips.csv \
+  --output data/manifests/clips.migrated.csv \
+  --legacy-base /path/to/the/original/working-directory
 ```
 
 ## Annotation Contract
@@ -99,16 +140,16 @@ If a file has no view suffix, the tooling treats it as `stitched`.
 
 Recommended workflow:
 
-1. Run `swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames`
+1. Run `uv run swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames`
 2. For frames where the swimmer is visible, place the 18 keypoints and mark the frame as `Labeled`
 3. For frames where the swimmer has not entered the view yet, use `No Swimmer` instead of silently skipping the file
 4. If you are not finished with a frame, keep it as `Pending`; if it needs another pass, mark it as `Review`
 5. Save and close the GUI
-6. Run `swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json`
+6. Run `uv run swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json`
 7. If the audit looks clean, build the annotation index:
 
 ```bash
-swim-pose annotations index --annotation-root data/annotations/seed --output data/manifests/annotation_index.csv
+uv run swim-pose annotations index --annotation-root data/annotations/seed --output data/manifests/annotation_index.csv
 ```
 
 GUI shortcuts:
@@ -132,4 +173,4 @@ If the desktop Tk GUI crashes on macOS, use the browser-based annotation UI inst
 ./scripts/launch_annotation_gui.sh
 ```
 
-This script now starts `annotations web` with the system Python and opens the labeling page in your browser.
+This wrapper now launches `annotations web` through the project's `uv` environment and opens the labeling page in your browser.

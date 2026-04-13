@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..constants import KEYPOINT_NAMES
 from ..io import read_csv_rows, read_json, read_jsonl, write_json
+from ..pathing import find_repo_root, resolve_repo_managed_path
 
 
 def evaluate_predictions_file(predictions_path: str | Path, annotations_path: str | Path, output_path: str | Path) -> Path:
@@ -65,11 +66,12 @@ def evaluate_predictions_file(predictions_path: str | Path, annotations_path: st
 
 def load_annotation_lookup(path: str | Path) -> dict[str, dict]:
     resolved = Path(path)
+    repo_root = find_repo_root()
     if resolved.suffix == ".csv":
         rows = read_csv_rows(resolved)
         lookup = {}
         for row in rows:
-            annotation = read_json(row["annotation_path"])
+            annotation = read_json(resolve_repo_managed_path(row["annotation_path"], repo_root))
             lookup[row["annotation_path"]] = annotation
             lookup[_annotation_key(annotation)] = annotation
         return lookup
@@ -121,4 +123,3 @@ def _annotation_key(annotation: dict) -> str:
 
 def _prediction_key(prediction: dict) -> str:
     return f"{prediction.get('clip_id', '')}:{prediction.get('source_view', '')}:{prediction.get('frame_index', 0)}"
-
