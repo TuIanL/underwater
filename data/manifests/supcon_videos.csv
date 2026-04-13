@@ -1,0 +1,13 @@
+video_id,video_path,athlete_id,session_id,stroke_label,take_id,validation_status,validation_notes,fps,frame_count,duration_s
+athlete01_session01_蛙,data/raw/videos/athlete01/session01/蛙.mp4,athlete01,session01,蛙,,valid,,60.0,1276,21.267
+姚钧及_session_0225_仰,data/raw/videos/姚钧及/session_0225/仰.mp4,姚钧及,session_0225,仰,,valid,,60.0,1504,25.067
+姚钧及_session_0225_自,data/raw/videos/姚钧及/session_0225/自.mp4,姚钧及,session_0225,自,,valid,,60.0,1110,18.5
+姚钧及_session_0225_蛙,data/raw/videos/姚钧及/session_0225/蛙.mp4,姚钧及,session_0225,蛙,,valid,,60.0,1276,21.267
+姚钧及_session_0225_蝶,data/raw/videos/姚钧及/session_0225/蝶.mp4,姚钧及,session_0225,蝶,,valid,,60.0,948,15.8
+姚颢轩_session_0225_仰,data/raw/videos/姚颢轩/session_0225/仰.mp4,姚颢轩,session_0225,仰,,valid,,60.0,620,10.333
+姚颢轩_session_0225_自,data/raw/videos/姚颢轩/session_0225/自.mp4,姚颢轩,session_0225,自,,valid,,60.0,1020,17.0
+赵瑞熙_session_0224_仰,data/raw/videos/赵瑞熙/session_0224/仰.mp4,赵瑞熙,session_0224,仰,,valid,,60.0,1336,22.267
+赵瑞熙_session_0224,data/raw/videos/赵瑞熙/session_0224/四式合集.mp4,赵瑞熙,session_0224,,,mixed_stroke,filename indicates a mixed-stroke or compilation video,,,
+赵瑞熙_session_0224_自,data/raw/videos/赵瑞熙/session_0224/自.mp4,赵瑞熙,session_0224,自,,valid,,60.0,950,15.833
+赵瑞熙_session_0224_蛙,data/raw/videos/赵瑞熙/session_0224/蛙.mp4,赵瑞熙,session_0224,蛙,,valid,,60.0,2686,44.767
+赵瑞熙_session_0224_蝶,data/raw/videos/赵瑞熙/session_0224/蝶.mp4,赵瑞熙,session_0224,蝶,,valid,,60.0,1296,21.6
