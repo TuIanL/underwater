@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,21 @@ MANIFEST_FIELDS = [
     "duration_under_s",
     "notes",
 ]
+SUPCON_VIDEO_INDEX_FIELDS = [
+    "video_id",
+    "video_path",
+    "athlete_id",
+    "session_id",
+    "stroke_label",
+    "take_id",
+    "validation_status",
+    "validation_notes",
+    "fps",
+    "frame_count",
+    "duration_s",
+]
+SUPCON_STROKE_TOKENS = ("蛙", "仰", "蝶", "自")
+SUPCON_MIXED_STROKE_HINTS = ("四式", "合集", "mixed", "mix")
 
 _VIEW_MARKERS = {
     "above": ("_above", "-above", "_top", "-top", "_surface", "-surface"),
@@ -58,6 +74,24 @@ class ClipManifestEntry:
         return {field: str(getattr(self, field, "")) for field in MANIFEST_FIELDS}
 
 
+@dataclass
+class SupConVideoEntry:
+    video_id: str
+    video_path: str
+    athlete_id: str
+    session_id: str
+    stroke_label: str
+    take_id: str = ""
+    validation_status: str = "valid"
+    validation_notes: str = ""
+    fps: str = ""
+    frame_count: str = ""
+    duration_s: str = ""
+
+    def to_row(self) -> dict[str, str]:
+        return {field: str(getattr(self, field, "")) for field in SUPCON_VIDEO_INDEX_FIELDS}
+
+
 def discover_manifest(video_root: str | Path) -> list[ClipManifestEntry]:
     root = Path(video_root)
     repo_root = require_repo_root()
@@ -85,6 +119,120 @@ def discover_manifest(video_root: str | Path) -> list[ClipManifestEntry]:
             entry.stitched_path = resolved
         entry.primary_view = determine_primary_view(entry)
     return list(grouped.values())
+
+
+def build_supcon_video_index(video_root: str | Path, output_path: str | Path) -> tuple[Path, dict[str, int]]:
+    root = Path(video_root)
+    repo_root = require_repo_root()
+    entries: list[SupConVideoEntry] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        entries.append(inspect_supcon_video(root, path, repo_root=repo_root))
+    write_csv_rows(output_path, SUPCON_VIDEO_INDEX_FIELDS, (entry.to_row() for entry in entries))
+    return Path(output_path), summarize_supcon_video_entries(entries)
+
+
+def inspect_supcon_video(
+    video_root: str | Path,
+    path: str | Path,
+    *,
+    repo_root: Path | None = None,
+) -> SupConVideoEntry:
+    root = Path(video_root)
+    video_path = Path(path)
+    resolved_repo_root = repo_root or require_repo_root()
+    relative_parts = video_path.relative_to(root).parts
+    serialized_path = serialize_workspace_path(video_path, resolved_repo_root)
+    athlete_id = ""
+    session_id = ""
+    notes: list[str] = []
+    validation_status = "valid"
+    if len(relative_parts) == 3:
+        athlete_id = relative_parts[0].strip()
+        session_id = relative_parts[1].strip()
+    else:
+        validation_status = "invalid_layout"
+        notes.append("expected <athlete_id>/<session_id>/<stroke>_<take> under the configured video root")
+
+    stroke_label, take_id, label_status, label_note = parse_supcon_video_stem(video_path.stem)
+    if label_note:
+        notes.append(label_note)
+    if validation_status == "valid" and label_status != "valid":
+        validation_status = label_status
+
+    metadata: dict[str, float | int] = {}
+    if validation_status == "valid":
+        metadata = probe_video(serialized_path)
+        if int(metadata.get("frames", 0) or 0) <= 0:
+            validation_status = "unreadable"
+            notes.append("video metadata could not be probed")
+
+    return SupConVideoEntry(
+        video_id=build_supcon_video_id(
+            athlete_id=athlete_id,
+            session_id=session_id,
+            stroke_label=stroke_label,
+            take_id=take_id,
+            fallback_path=video_path,
+        ),
+        video_path=serialized_path,
+        athlete_id=athlete_id,
+        session_id=session_id,
+        stroke_label=stroke_label,
+        take_id=take_id,
+        validation_status=validation_status,
+        validation_notes="; ".join(dict.fromkeys(note for note in notes if note)),
+        fps=stringify(metadata.get("fps", "")),
+        frame_count=stringify(metadata.get("frames", "")),
+        duration_s=stringify(metadata.get("duration_s", "")),
+    )
+
+
+def parse_supcon_video_stem(stem: str) -> tuple[str, str, str, str]:
+    normalized = stem.strip()
+    if not normalized:
+        return "", "", "unknown_stroke", "filename stem is empty"
+    for token in SUPCON_STROKE_TOKENS:
+        if normalized == token:
+            return token, "", "valid", ""
+        for separator in ("_", "-"):
+            prefix = f"{token}{separator}"
+            if normalized.startswith(prefix):
+                take_id = normalized[len(prefix):].strip("_- ")
+                if not take_id:
+                    return "", "", "unknown_stroke", "take suffix cannot be empty when a separator is present"
+                return token, take_id, "valid", ""
+    if any(hint in normalized.lower() for hint in SUPCON_MIXED_STROKE_HINTS):
+        return "", "", "mixed_stroke", "filename indicates a mixed-stroke or compilation video"
+    supported = ", ".join(SUPCON_STROKE_TOKENS)
+    return "", "", "unknown_stroke", f"filename must start with one of: {supported}"
+
+
+def build_supcon_video_id(
+    athlete_id: str,
+    session_id: str,
+    stroke_label: str,
+    take_id: str,
+    fallback_path: Path,
+) -> str:
+    parts = [part for part in (athlete_id, session_id, stroke_label, take_id) if part]
+    if parts:
+        return "_".join(parts)
+    fallback = fallback_path.stem.strip().replace(" ", "_")
+    return fallback or fallback_path.name.replace(".", "_")
+
+
+def summarize_supcon_video_entries(entries: list[SupConVideoEntry]) -> dict[str, int]:
+    status_counts = Counter(entry.validation_status for entry in entries)
+    summary = {
+        "rows": len(entries),
+        "valid": status_counts.get("valid", 0),
+        "invalid": len(entries) - status_counts.get("valid", 0),
+    }
+    for status, count in sorted(status_counts.items()):
+        summary[status] = count
+    return summary
 
 
 def write_manifest(path: str | Path, entries: list[ClipManifestEntry]) -> Path:

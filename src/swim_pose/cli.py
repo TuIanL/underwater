@@ -120,6 +120,14 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_split.add_argument("--seed", type=int, default=7)
     dataset_split.set_defaults(handler=_handle_dataset_split)
 
+    dataset_video_index = dataset_sub.add_parser(
+        "build-video-index",
+        help="Build a normalized video index for Phase 1 SupCon training.",
+    )
+    dataset_video_index.add_argument("--video-root", default="data/raw/videos")
+    dataset_video_index.add_argument("--output", required=True)
+    dataset_video_index.set_defaults(handler=_handle_dataset_build_video_index)
+
     train_parser = subparsers.add_parser("train", help="Training entrypoints.")
     train_sub = train_parser.add_subparsers(dest="train_command")
 
@@ -130,6 +138,10 @@ def build_parser() -> argparse.ArgumentParser:
     train_semi = train_sub.add_parser("semisupervised", help="Run semi-supervised training.")
     train_semi.add_argument("--config", required=True)
     train_semi.set_defaults(handler=_handle_train_semisupervised)
+
+    train_supcon = train_sub.add_parser("supcon", help="Run Phase 1 supervised contrastive pretraining.")
+    train_supcon.add_argument("--config", required=True)
+    train_supcon.set_defaults(handler=_handle_train_supcon)
 
     predictions_parser = subparsers.add_parser("predictions", help="Prediction result browsing utilities.")
     predictions_sub = predictions_parser.add_subparsers(dest="predictions_command")
@@ -318,6 +330,19 @@ def _handle_dataset_split(args: argparse.Namespace) -> None:
         print(f"Wrote {destination}")
 
 
+def _handle_dataset_build_video_index(args: argparse.Namespace) -> None:
+    from .manifest import build_supcon_video_index
+
+    destination, summary = build_supcon_video_index(
+        video_root=resolve_source_input_path(args.video_root),
+        output_path=resolve_repo_managed_path(args.output),
+    )
+    print(
+        "Wrote Phase 1 video index to "
+        f"{destination} ({summary['rows']} rows, valid={summary['valid']}, invalid={summary['invalid']})"
+    )
+
+
 def _handle_train_supervised(args: argparse.Namespace) -> None:
     from .training.supervised import run_supervised_training
 
@@ -330,6 +355,13 @@ def _handle_train_semisupervised(args: argparse.Namespace) -> None:
 
     checkpoint = run_semi_supervised_training(resolve_repo_managed_path(args.config))
     print(f"Saved semi-supervised checkpoint to {checkpoint}")
+
+
+def _handle_train_supcon(args: argparse.Namespace) -> None:
+    from .training.supcon import run_supcon_training
+
+    checkpoint = run_supcon_training(resolve_repo_managed_path(args.config))
+    print(f"Saved Phase 1 SupCon checkpoint to {checkpoint}")
 
 
 def _handle_predictions_web(args: argparse.Namespace) -> None:

@@ -8,7 +8,15 @@ from ..pathing import require_repo_root, resolve_repo_managed_path
 
 CONFIG_PATH_FIELDS = {
     "experiment": ("output_dir",),
-    "dataset": ("train_index", "val_index", "annotation_index", "labeled_index", "unlabeled_index", "image_root"),
+    "dataset": (
+        "train_index",
+        "val_index",
+        "annotation_index",
+        "labeled_index",
+        "unlabeled_index",
+        "image_root",
+        "video_index",
+    ),
     "model": ("pretrained_checkpoint",),
 }
 

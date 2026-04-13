@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 
 def supervised_pose_loss(
@@ -25,6 +26,33 @@ def supervised_pose_loss(
         "heatmap_loss": float(heatmap_loss.detach().cpu()),
         "visibility_loss": float(visibility_loss.detach().cpu()),
     }
+
+
+class SupConLoss(nn.Module):
+    def __init__(self, temperature: float = 0.07) -> None:
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, projections: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        if projections.ndim != 2:
+            raise ValueError(f"Expected 2D projections, got shape {tuple(projections.shape)}")
+        if labels.ndim != 1:
+            labels = labels.reshape(-1)
+        if projections.shape[0] != labels.shape[0]:
+            raise ValueError("Number of projections and labels must match")
+
+        logits = torch.matmul(projections, projections.T) / self.temperature
+        logits = logits - logits.max(dim=1, keepdim=True).values.detach()
+
+        self_mask = torch.eye(logits.shape[0], device=logits.device, dtype=torch.bool)
+        positive_mask = labels.unsqueeze(0).eq(labels.unsqueeze(1)) & ~self_mask
+        if torch.any(positive_mask.sum(dim=1) == 0):
+            raise ValueError("SupConLoss requires at least one positive pair for every anchor")
+
+        log_denominator = torch.logsumexp(logits.masked_fill(self_mask, float("-inf")), dim=1, keepdim=True)
+        log_prob = logits - log_denominator
+        mean_log_prob = (positive_mask.float() * log_prob).sum(dim=1) / positive_mask.sum(dim=1).clamp_min(1)
+        return -mean_log_prob.mean()
 
 
 def consistency_loss(
