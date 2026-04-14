@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 import random
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -147,6 +149,72 @@ class TemporalUnlabeledFrameDataset(UnlabeledFrameDataset):
             if same_stream:
                 temporal_pairs[current_index] = next_index
         return temporal_pairs
+
+
+class TemporalPoseDataset(PoseDataset):
+    def __init__(
+        self,
+        index_path: str | Path,
+        image_root: str | Path,
+        input_size: tuple[int, int],
+        heatmap_size: tuple[int, int],
+        bridge_input_size: tuple[int, int],
+        bridge_clip_length: int,
+        bridge_frame_stride: int = 1,
+    ) -> None:
+        super().__init__(
+            index_path=index_path,
+            image_root=image_root,
+            input_size=input_size,
+            heatmap_size=heatmap_size,
+        )
+        self.bridge_input_size = bridge_input_size
+        self.bridge_clip_length = max(int(bridge_clip_length), 1)
+        self.bridge_frame_stride = max(int(bridge_frame_stride), 1)
+        self.temporal_groups = self._build_temporal_groups()
+
+    def __getitem__(self, index: int) -> dict:
+        sample = super().__getitem__(index)
+        sample["bridge_clip"], sample["bridge_frame_indices"] = self._build_bridge_clip(index)
+        return sample
+
+    def _build_temporal_groups(self) -> dict[tuple[str, str], list[tuple[int, int]]]:
+        groups: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
+        for row_index, row in enumerate(self.rows):
+            key = (row.get("clip_id", ""), row.get("source_view", ""))
+            groups[key].append((_safe_int(row.get("frame_index", 0)), row_index))
+        for key in groups:
+            groups[key].sort(key=lambda item: item[0])
+        return groups
+
+    def _build_bridge_clip(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        row = self.rows[index]
+        key = (row.get("clip_id", ""), row.get("source_view", ""))
+        group = self.temporal_groups.get(key)
+        if not group:
+            image = self._load_row_image(row, self.bridge_input_size)
+            frames = [image.clone() for _ in range(self.bridge_clip_length)]
+            frame_indices = [_safe_int(row.get("frame_index", 0)) for _ in range(self.bridge_clip_length)]
+            return torch.stack(frames, dim=1), torch.tensor(frame_indices, dtype=torch.long)
+
+        current_frame = _safe_int(row.get("frame_index", 0))
+        offsets = _centered_temporal_offsets(self.bridge_clip_length, self.bridge_frame_stride)
+        selected_rows: list[dict[str, str]] = []
+        selected_frame_indices: list[int] = []
+        for offset in offsets:
+            matched_frame_index, matched_row_index = _nearest_group_row(group, current_frame + offset)
+            selected_rows.append(self.rows[matched_row_index])
+            selected_frame_indices.append(matched_frame_index)
+        frames = [self._load_row_image(selected_row, self.bridge_input_size) for selected_row in selected_rows]
+        return torch.stack(frames, dim=1), torch.tensor(selected_frame_indices, dtype=torch.long)
+
+    def _load_row_image(self, row: dict[str, str], input_size: tuple[int, int]) -> torch.Tensor:
+        image_path = row.get("image_path", "")
+        if not image_path:
+            annotation = read_json(resolve_repo_managed_path(row["annotation_path"], self.repo_root))
+            image_path = annotation.get("image_path", "")
+        image, _ = _load_image(self._resolve_image_path(image_path), input_size)
+        return image
 
 
 class SupConVideoDataset(Dataset):
@@ -403,3 +471,22 @@ def _safe_int(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _centered_temporal_offsets(clip_length: int, frame_stride: int) -> list[int]:
+    anchor = clip_length // 2
+    return [(index - anchor) * frame_stride for index in range(clip_length)]
+
+
+def _nearest_group_row(group: list[tuple[int, int]], desired_frame_index: int) -> tuple[int, int]:
+    frame_indices = [frame_index for frame_index, _ in group]
+    position = bisect_left(frame_indices, desired_frame_index)
+    if position <= 0:
+        return group[0]
+    if position >= len(group):
+        return group[-1]
+    previous = group[position - 1]
+    current = group[position]
+    if abs(previous[0] - desired_frame_index) <= abs(current[0] - desired_frame_index):
+        return previous
+    return current

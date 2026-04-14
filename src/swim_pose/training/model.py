@@ -71,14 +71,17 @@ class ResNetHeatmapModel(nn.Module):
             nn.Linear(feature_dim, num_keypoints * 3),
         )
         self.num_keypoints = num_keypoints
+        self.feature_dim = feature_dim
 
     def forward(self, image: torch.Tensor) -> dict[str, torch.Tensor]:
         features = self.stem(image)
+        pooled_features = nn.functional.adaptive_avg_pool2d(features, output_size=1).flatten(1)
         heatmaps = self.heatmap_head(self.deconv(features))
         visibility_logits = self.visibility_head(features).view(image.shape[0], self.num_keypoints, 3)
         return {
             "heatmaps": heatmaps,
             "visibility_logits": visibility_logits,
+            "pooled_features": pooled_features,
         }
 
 

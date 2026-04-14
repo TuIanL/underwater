@@ -7,7 +7,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from ..constants import KEYPOINT_NAMES
-from .common import checkpoint_path, resolve_device, set_random_seed
+from .common import checkpoint_path, forward_with_singleton_batch_support, resolve_device, set_random_seed
 from .config import experiment_output_dir, load_config
 from .dataset import PoseDataset, TemporalUnlabeledFrameDataset, UnlabeledFrameDataset
 from .losses import consistency_loss, supervised_pose_loss, temporal_smoothness_loss
@@ -17,10 +17,10 @@ from .model import build_model
 def run_semi_supervised_training(config_path: str | Path) -> Path:
     config = load_config(config_path)
     set_random_seed(int(config["experiment"].get("seed", 7)))
-    device = resolve_device()
+    training_config = config["training"]
+    device = resolve_device(training_config.get("device"))
     output_dir = experiment_output_dir(config)
     dataset_config = config["dataset"]
-    training_config = config["training"]
     input_size = (dataset_config["input_width"], dataset_config["input_height"])
     heatmap_size = (dataset_config["heatmap_width"], dataset_config["heatmap_height"])
 
@@ -75,7 +75,7 @@ def run_semi_supervised_training(config_path: str | Path) -> Path:
             labeled_images = labeled_batch["image"].to(device)
             labeled_heatmaps = labeled_batch["heatmaps"].to(device)
             labeled_visibility = labeled_batch["visibility"].to(device)
-            supervised_predictions = model(labeled_images)
+            supervised_predictions = forward_with_singleton_batch_support(model, labeled_images)
             supervised_loss, _ = supervised_pose_loss(
                 predictions=supervised_predictions,
                 target_heatmaps=labeled_heatmaps,
@@ -84,13 +84,13 @@ def run_semi_supervised_training(config_path: str | Path) -> Path:
             )
 
             unlabeled_images = unlabeled_batch["image"].to(device)
-            weak_predictions = model(unlabeled_images)
-            strong_predictions = model(_strong_augment(unlabeled_images))
+            weak_predictions = forward_with_singleton_batch_support(model, unlabeled_images)
+            strong_predictions = forward_with_singleton_batch_support(model, _strong_augment(unlabeled_images))
             unsupervised_loss = consistency_loss(weak_predictions, strong_predictions, threshold=threshold)
             temporal_loss = weak_predictions["heatmaps"].new_tensor(0.0)
             if temporal_weight > 0:
                 temporal_images = unlabeled_batch["temporal_image"].to(device)
-                temporal_predictions = model(temporal_images)
+                temporal_predictions = forward_with_singleton_batch_support(model, temporal_images)
                 temporal_loss = temporal_smoothness_loss(
                     current_predictions=weak_predictions,
                     temporal_predictions=temporal_predictions,
@@ -104,7 +104,15 @@ def run_semi_supervised_training(config_path: str | Path) -> Path:
             optimizer.step()
 
     checkpoint = checkpoint_path(output_dir)
-    torch.save({"model": model.state_dict(), "config": config}, checkpoint)
+    torch.save(
+        {
+            "checkpoint_type": "localization",
+            "training_mode": "semi_supervised",
+            "model": model.state_dict(),
+            "config": config,
+        },
+        checkpoint,
+    )
     return checkpoint
 
 

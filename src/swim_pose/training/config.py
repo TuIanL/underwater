@@ -18,6 +18,7 @@ CONFIG_PATH_FIELDS = {
         "video_index",
     ),
     "model": ("pretrained_checkpoint",),
+    "bridge": ("teacher_checkpoint",),
 }
 
 
