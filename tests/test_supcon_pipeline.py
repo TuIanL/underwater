@@ -5,6 +5,9 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import torch
 
 from swim_pose.io import read_csv_rows
 from swim_pose.manifest import (
@@ -12,6 +15,9 @@ from swim_pose.manifest import (
     inspect_supcon_video,
     parse_supcon_video_stem,
 )
+from swim_pose.training import dataset as dataset_module
+from swim_pose.training.dataset import SupConVideoDataset
+from swim_pose.training.model import build_model, build_supcon_model
 from swim_pose.training.supcon import run_supcon_training
 
 
@@ -58,6 +64,96 @@ class SupConIngestionTests(unittest.TestCase):
 
 
 class SupConTrainingSmokeTests(unittest.TestCase):
+    def test_supcon_dataset_reuses_one_sampled_clip_for_both_views(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            video_root = base / "videos"
+            _write_test_video(video_root / "athlete01" / "session01" / "蛙_01.avi", frame_count=8)
+            index_path, summary = build_supcon_video_index(video_root, base / "supcon.csv")
+            self.assertEqual(summary["valid"], 1)
+
+            dataset = SupConVideoDataset(
+                index_path=index_path,
+                input_size=(32, 32),
+                clip_length=4,
+                frame_stride=1,
+                temporal_jitter=0,
+                crop_scale_range=(1.0, 1.0),
+                color_jitter_strength=0.0,
+                grayscale_prob=0.0,
+                blur_prob=0.0,
+                blur_kernel_size=3,
+            )
+            raw_clip = torch.arange(3 * 4 * 32 * 32, dtype=torch.float32).reshape(3, 4, 32, 32) / 255.0
+            load_calls: list[list[int]] = []
+            augment_call_count = 0
+
+            def fake_load_video_clip(path: Path, frame_indices: list[int], input_size: tuple[int, int]) -> torch.Tensor:
+                self.assertEqual(input_size, (32, 32))
+                self.assertTrue(path.exists())
+                load_calls.append(list(frame_indices))
+                return raw_clip.clone()
+
+            def fake_augment_video_clip(clip: torch.Tensor, **_: object) -> torch.Tensor:
+                nonlocal augment_call_count
+                augment_call_count += 1
+                return clip + augment_call_count
+
+            with (
+                patch.object(dataset_module, "_load_video_clip", side_effect=fake_load_video_clip),
+                patch.object(dataset_module, "_augment_video_clip", side_effect=fake_augment_video_clip),
+            ):
+                sample = dataset[0]
+
+            self.assertEqual(len(load_calls), 1)
+            self.assertEqual(sample["clip_frame_indices"].tolist(), load_calls[0])
+            self.assertFalse(torch.equal(sample["view_1"], sample["view_2"]))
+            self.assertTrue(
+                torch.allclose(sample["view_1"] - sample["view_2"], torch.full_like(raw_clip, -1.0), atol=1e-5)
+            )
+
+    def test_build_supcon_model_uses_video_backbone(self) -> None:
+        config = {
+            "model": {
+                "backbone": "r2plus1d_18",
+                "pretrained_backbone": False,
+                "pretrained_checkpoint": "",
+                "projection_hidden_dim": 64,
+                "projection_dim": 16,
+            }
+        }
+
+        model = build_supcon_model(config)
+        outputs = model(torch.rand(2, 3, 4, 64, 64))
+
+        self.assertEqual(model.encoder.backbone_name, "r2plus1d_18")
+        self.assertEqual(outputs["features"].shape[0], 2)
+        self.assertEqual(outputs["features"].ndim, 2)
+        self.assertEqual(outputs["projections"].shape, (2, 16))
+
+    def test_build_model_rejects_video_supcon_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint_path = Path(tmp) / "supcon.pt"
+            torch.save(
+                {
+                    "checkpoint_type": "supcon_video_pretraining",
+                    "encoder": {"encoder.weight": torch.tensor([1.0])},
+                    "projection_head": {"projection_head.weight": torch.tensor([1.0])},
+                },
+                checkpoint_path,
+            )
+
+            config = {
+                "model": {
+                    "backbone": "resnet18",
+                    "pretrained_backbone": False,
+                    "pretrained_checkpoint": str(checkpoint_path),
+                }
+            }
+
+            with self.assertRaisesRegex(ValueError, "not directly compatible"):
+                build_model(config, num_keypoints=18)
+
     def test_run_supcon_training_writes_checkpoint_and_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -91,20 +187,24 @@ class SupConTrainingSmokeTests(unittest.TestCase):
                     blur_kernel_size = 3
 
                     [model]
-                    backbone = "resnet18"
+                    backbone = "r2plus1d_18"
                     pretrained_backbone = false
                     pretrained_checkpoint = ""
-                    projection_hidden_dim = 128
-                    projection_dim = 32
+                    projection_hidden_dim = 64
+                    projection_dim = 16
 
                     [training]
                     epochs = 1
                     batch_size = 2
+                    gradient_accumulation_steps = 1
                     learning_rate = 0.001
                     weight_decay = 0.0001
                     momentum = 0.9
                     optimizer = "sgd"
                     temperature = 0.07
+                    warmup_epochs = 0
+                    amp = false
+                    clip_grad_norm = 0.0
                     num_workers = 0
                     device = "cpu"
                     use_cosine_schedule = false
@@ -119,6 +219,10 @@ class SupConTrainingSmokeTests(unittest.TestCase):
 
             self.assertTrue(checkpoint.exists())
             self.assertTrue(metrics_path.exists())
+            state = torch.load(checkpoint, map_location="cpu")
+            self.assertEqual(state["checkpoint_type"], "supcon_video_pretraining")
+            self.assertEqual(state["encoder_backbone"], "r2plus1d_18")
+            self.assertEqual(state["reuse_targets"], ["video"])
             payload = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(len(payload), 1)
 

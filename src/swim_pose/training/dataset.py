@@ -193,12 +193,14 @@ class SupConVideoDataset(Dataset):
         label = self.label_to_index[row["stroke_label"]]
         frame_count = max(_safe_int(row.get("frame_count", 0)), 1)
         resolved_path = self._resolve_video_path(row["video_path"])
-        view_1 = self._sample_augmented_view(resolved_path, frame_count)
-        view_2 = self._sample_augmented_view(resolved_path, frame_count)
+        clip_raw, frame_indices = self._sample_raw_clip(resolved_path, frame_count)
+        view_1 = self._augment_clip(clip_raw)
+        view_2 = self._augment_clip(clip_raw)
         return {
             "view_1": view_1,
             "view_2": view_2,
             "label": torch.tensor(label, dtype=torch.long),
+            "clip_frame_indices": frame_indices,
             "stroke_label": row["stroke_label"],
             "video_id": row.get("video_id", ""),
             "video_path": row["video_path"],
@@ -207,7 +209,7 @@ class SupConVideoDataset(Dataset):
             "take_id": row.get("take_id", ""),
         }
 
-    def _sample_augmented_view(self, path: Path, frame_count: int) -> torch.Tensor:
+    def _sample_raw_clip(self, path: Path, frame_count: int) -> tuple[torch.Tensor, torch.Tensor]:
         frame_indices = _sample_temporal_indices(
             frame_count=frame_count,
             clip_length=self.clip_length,
@@ -215,8 +217,11 @@ class SupConVideoDataset(Dataset):
             temporal_jitter=self.temporal_jitter,
         )
         clip = _load_video_clip(path, frame_indices, self.input_size)
+        return clip, torch.tensor(frame_indices, dtype=torch.long)
+
+    def _augment_clip(self, clip: torch.Tensor) -> torch.Tensor:
         return _augment_video_clip(
-            clip=clip,
+            clip=clip.clone(),
             crop_scale_range=self.crop_scale_range,
             color_jitter_strength=self.color_jitter_strength,
             grayscale_prob=self.grayscale_prob,
