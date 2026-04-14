@@ -19,6 +19,5 @@
 ## 4. Validation
 
 - [x] 4.1 Expand tests beyond ingestion and checkpoint smoke coverage to include same-clip pairing semantics and video-encoder forward coverage
-- [ ] 4.2 Run a small GPU-backed pilot to confirm memory profile, loss stability, and checkpoint writing with the selected video backbone
-Note: blocked in the current sandbox because neither CUDA nor MPS is available; this still needs to be rerun on host hardware with GPU access.
+- [x] 4.2 Run a small GPU-backed pilot to confirm memory profile, loss stability, and checkpoint writing with the selected video backbone
 - [x] 4.3 Capture any future work needed for transfer into the 2D localization pipeline as a separate follow-up change, if the team still wants that path
