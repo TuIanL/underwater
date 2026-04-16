@@ -64,6 +64,38 @@ class SupConIngestionTests(unittest.TestCase):
 
 
 class SupConTrainingSmokeTests(unittest.TestCase):
+    def test_apply_tube_mask_masks_one_region_across_consecutive_frames(self) -> None:
+        clip = torch.ones((3, 4, 4, 4), dtype=torch.float32)
+
+        with patch.object(dataset_module.random, "randint", side_effect=[1]):
+            masked = dataset_module._apply_tube_mask(
+                clip.clone(),
+                frame_span_range=(2, 2),
+                scale_range=(0.5, 0.5),
+                fill_mode="zero",
+                center_bias=1.0,
+            )
+
+        self.assertTrue(torch.equal(masked[:, 0], clip[:, 0]))
+        self.assertTrue(torch.equal(masked[:, 3], clip[:, 3]))
+        self.assertTrue(torch.equal(masked[:, 1:3, 1:3, 1:3], torch.zeros((3, 2, 2, 2))))
+        self.assertTrue(torch.equal(masked[:, 1:3, 0, :], clip[:, 1:3, 0, :]))
+
+    def test_augment_video_clip_preserves_clip_when_tube_mask_disabled(self) -> None:
+        clip = torch.rand((3, 4, 8, 8), dtype=torch.float32)
+
+        augmented = dataset_module._augment_video_clip(
+            clip.clone(),
+            crop_scale_range=(1.0, 1.0),
+            color_jitter_strength=0.0,
+            grayscale_prob=0.0,
+            blur_prob=0.0,
+            blur_kernel_size=3,
+            tube_mask_prob=0.0,
+        )
+
+        self.assertTrue(torch.equal(augmented, clip))
+
     def test_supcon_dataset_reuses_one_sampled_clip_for_both_views(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -185,6 +217,13 @@ class SupConTrainingSmokeTests(unittest.TestCase):
                     grayscale_prob = 0.0
                     blur_prob = 0.0
                     blur_kernel_size = 3
+                    tube_mask_prob = 0.0
+                    tube_mask_frames_min = 2
+                    tube_mask_frames_max = 3
+                    tube_mask_scale_min = 0.25
+                    tube_mask_scale_max = 0.4
+                    tube_mask_fill_mode = "zero"
+                    tube_mask_center_bias = 0.6
 
                     [model]
                     backbone = "r2plus1d_18"
@@ -223,6 +262,8 @@ class SupConTrainingSmokeTests(unittest.TestCase):
             self.assertEqual(state["checkpoint_type"], "supcon_video_pretraining")
             self.assertEqual(state["encoder_backbone"], "r2plus1d_18")
             self.assertEqual(state["reuse_targets"], ["video"])
+            self.assertEqual(state["conservative_upgrade"]["stage"], "stage0_baseline")
+            self.assertFalse(state["conservative_upgrade"]["tube_mask"]["enabled"])
             payload = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(len(payload), 1)
 

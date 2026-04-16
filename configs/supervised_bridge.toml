@@ -2,6 +2,7 @@
 name = "breaststroke-supervised-bridge-spike"
 output_dir = "artifacts/checkpoints/supervised_bridge"
 seed = 7
+conservative_stage = "stage2_dense_context"
 
 [dataset]
 train_index = "data/manifests/splits/train.csv"
@@ -29,8 +30,10 @@ visibility_loss_weight = 0.2
 [bridge]
 enabled = true
 teacher_checkpoint = "artifacts/checkpoints/supcon/best.pt"
+context_index = "data/manifests/unlabeled_index.csv"
 input_width = 112
 input_height = 112
 clip_length = 8
 frame_stride = 2
 distillation_weight = 0.1
+skip_missing_context = true

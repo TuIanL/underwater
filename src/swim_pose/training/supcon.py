@@ -40,6 +40,13 @@ def run_supcon_training(config_path: str | Path) -> Path:
         grayscale_prob=float(dataset_config.get("grayscale_prob", 0.2)),
         blur_prob=float(dataset_config.get("blur_prob", 0.5)),
         blur_kernel_size=int(dataset_config.get("blur_kernel_size", 5)),
+        tube_mask_prob=float(dataset_config.get("tube_mask_prob", 0.0)),
+        tube_mask_frames_min=int(dataset_config.get("tube_mask_frames_min", 2)),
+        tube_mask_frames_max=int(dataset_config.get("tube_mask_frames_max", 3)),
+        tube_mask_scale_min=float(dataset_config.get("tube_mask_scale_min", 0.25)),
+        tube_mask_scale_max=float(dataset_config.get("tube_mask_scale_max", 0.45)),
+        tube_mask_fill_mode=str(dataset_config.get("tube_mask_fill_mode", "zero")),
+        tube_mask_center_bias=float(dataset_config.get("tube_mask_center_bias", 0.0)),
     )
     loader = DataLoader(
         dataset,
@@ -119,6 +126,19 @@ def run_supcon_training(config_path: str | Path) -> Path:
             "checkpoint_type": "supcon_video_pretraining",
             "encoder_backbone": model.encoder.backbone_name,
             "reuse_targets": ["video"],
+            "conservative_upgrade": {
+                "stage": str(config["experiment"].get("conservative_stage", "stage0_baseline")),
+                "tube_mask": {
+                    "enabled": dataset.tube_mask_prob > 0,
+                    "probability": dataset.tube_mask_prob,
+                    "frames_min": dataset.tube_mask_frames_min,
+                    "frames_max": dataset.tube_mask_frames_max,
+                    "scale_min": dataset.tube_mask_scale_range[0],
+                    "scale_max": dataset.tube_mask_scale_range[1],
+                    "fill_mode": dataset.tube_mask_fill_mode,
+                    "center_bias": dataset.tube_mask_center_bias,
+                },
+            },
             "model": model.state_dict(),
             "encoder": model.encoder.state_dict(),
             "projection_head": model.projection_head.state_dict(),

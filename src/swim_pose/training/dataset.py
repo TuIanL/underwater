@@ -161,6 +161,7 @@ class TemporalPoseDataset(PoseDataset):
         bridge_input_size: tuple[int, int],
         bridge_clip_length: int,
         bridge_frame_stride: int = 1,
+        bridge_context_index: str | Path | None = None,
     ) -> None:
         super().__init__(
             index_path=index_path,
@@ -171,42 +172,51 @@ class TemporalPoseDataset(PoseDataset):
         self.bridge_input_size = bridge_input_size
         self.bridge_clip_length = max(int(bridge_clip_length), 1)
         self.bridge_frame_stride = max(int(bridge_frame_stride), 1)
-        self.temporal_groups = self._build_temporal_groups()
+        self.bridge_context_rows = read_csv_rows(bridge_context_index) if bridge_context_index else []
+        self.bridge_temporal_groups = self._build_temporal_groups(self.bridge_context_rows)
 
     def __getitem__(self, index: int) -> dict:
         sample = super().__getitem__(index)
-        sample["bridge_clip"], sample["bridge_frame_indices"] = self._build_bridge_clip(index)
+        bridge_clip, bridge_frame_indices, has_bridge_context = self._build_bridge_clip(index)
+        sample["bridge_clip"] = bridge_clip
+        sample["bridge_frame_indices"] = bridge_frame_indices
+        sample["has_bridge_context"] = has_bridge_context
         return sample
 
-    def _build_temporal_groups(self) -> dict[tuple[str, str], list[tuple[int, int]]]:
-        groups: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
-        for row_index, row in enumerate(self.rows):
+    def _build_temporal_groups(self, rows: list[dict[str, str]]) -> dict[tuple[str, str], list[tuple[int, dict[str, str]]]]:
+        groups: dict[tuple[str, str], list[tuple[int, dict[str, str]]]] = defaultdict(list)
+        for row in rows:
             key = (row.get("clip_id", ""), row.get("source_view", ""))
-            groups[key].append((_safe_int(row.get("frame_index", 0)), row_index))
+            groups[key].append((_safe_int(row.get("frame_index", 0)), row))
         for key in groups:
             groups[key].sort(key=lambda item: item[0])
         return groups
 
-    def _build_bridge_clip(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def _build_bridge_clip(self, index: int) -> tuple[torch.Tensor, torch.Tensor, bool]:
         row = self.rows[index]
         key = (row.get("clip_id", ""), row.get("source_view", ""))
-        group = self.temporal_groups.get(key)
+        group = self.bridge_temporal_groups.get(key)
         if not group:
-            image = self._load_row_image(row, self.bridge_input_size)
-            frames = [image.clone() for _ in range(self.bridge_clip_length)]
-            frame_indices = [_safe_int(row.get("frame_index", 0)) for _ in range(self.bridge_clip_length)]
-            return torch.stack(frames, dim=1), torch.tensor(frame_indices, dtype=torch.long)
+            return self._empty_bridge_clip()
 
         current_frame = _safe_int(row.get("frame_index", 0))
         offsets = _centered_temporal_offsets(self.bridge_clip_length, self.bridge_frame_stride)
         selected_rows: list[dict[str, str]] = []
         selected_frame_indices: list[int] = []
         for offset in offsets:
-            matched_frame_index, matched_row_index = _nearest_group_row(group, current_frame + offset)
-            selected_rows.append(self.rows[matched_row_index])
+            matched_frame_index, matched_row = _nearest_group_row(group, current_frame + offset)
+            selected_rows.append(matched_row)
             selected_frame_indices.append(matched_frame_index)
         frames = [self._load_row_image(selected_row, self.bridge_input_size) for selected_row in selected_rows]
-        return torch.stack(frames, dim=1), torch.tensor(selected_frame_indices, dtype=torch.long)
+        return torch.stack(frames, dim=1), torch.tensor(selected_frame_indices, dtype=torch.long), True
+
+    def _empty_bridge_clip(self) -> tuple[torch.Tensor, torch.Tensor, bool]:
+        width, height = self.bridge_input_size
+        return (
+            torch.zeros((3, self.bridge_clip_length, height, width), dtype=torch.float32),
+            torch.full((self.bridge_clip_length,), -1, dtype=torch.long),
+            False,
+        )
 
     def _load_row_image(self, row: dict[str, str], input_size: tuple[int, int]) -> torch.Tensor:
         image_path = row.get("image_path", "")
@@ -230,6 +240,13 @@ class SupConVideoDataset(Dataset):
         grayscale_prob: float = 0.2,
         blur_prob: float = 0.5,
         blur_kernel_size: int = 5,
+        tube_mask_prob: float = 0.0,
+        tube_mask_frames_min: int = 2,
+        tube_mask_frames_max: int = 3,
+        tube_mask_scale_min: float = 0.25,
+        tube_mask_scale_max: float = 0.45,
+        tube_mask_fill_mode: str = "zero",
+        tube_mask_center_bias: float = 0.0,
         valid_only: bool = True,
     ) -> None:
         rows = read_csv_rows(index_path)
@@ -249,6 +266,15 @@ class SupConVideoDataset(Dataset):
         self.blur_kernel_size = max(int(blur_kernel_size), 1)
         if self.blur_kernel_size % 2 == 0:
             self.blur_kernel_size += 1
+        self.tube_mask_prob = min(max(float(tube_mask_prob), 0.0), 1.0)
+        self.tube_mask_frames_min = max(int(tube_mask_frames_min), 1)
+        self.tube_mask_frames_max = max(int(tube_mask_frames_max), self.tube_mask_frames_min)
+        self.tube_mask_scale_range = (
+            max(float(tube_mask_scale_min), 0.0),
+            max(float(tube_mask_scale_max), 0.0),
+        )
+        self.tube_mask_fill_mode = str(tube_mask_fill_mode).lower()
+        self.tube_mask_center_bias = min(max(float(tube_mask_center_bias), 0.0), 1.0)
         self.repo_root = find_repo_root()
         labels = sorted({row["stroke_label"] for row in self.rows})
         self.label_to_index = {label: index for index, label in enumerate(labels)}
@@ -295,6 +321,11 @@ class SupConVideoDataset(Dataset):
             grayscale_prob=self.grayscale_prob,
             blur_prob=self.blur_prob,
             blur_kernel_size=self.blur_kernel_size,
+            tube_mask_prob=self.tube_mask_prob,
+            tube_mask_frames_range=(self.tube_mask_frames_min, self.tube_mask_frames_max),
+            tube_mask_scale_range=self.tube_mask_scale_range,
+            tube_mask_fill_mode=self.tube_mask_fill_mode,
+            tube_mask_center_bias=self.tube_mask_center_bias,
         )
 
     def _resolve_video_path(self, video_path: str) -> Path:
@@ -393,6 +424,11 @@ def _augment_video_clip(
     grayscale_prob: float,
     blur_prob: float,
     blur_kernel_size: int,
+    tube_mask_prob: float = 0.0,
+    tube_mask_frames_range: tuple[int, int] = (2, 3),
+    tube_mask_scale_range: tuple[float, float] = (0.25, 0.45),
+    tube_mask_fill_mode: str = "zero",
+    tube_mask_center_bias: float = 0.0,
 ) -> torch.Tensor:
     augmented = _random_resized_crop_clip(clip, crop_scale_range)
     augmented = _apply_color_jitter(augmented, color_jitter_strength)
@@ -402,6 +438,14 @@ def _augment_video_clip(
     if random.random() < blur_prob:
         sigma = random.uniform(0.5, 1.5)
         augmented = _apply_gaussian_blur(augmented, kernel_size=blur_kernel_size, sigma=sigma)
+    if tube_mask_prob > 0 and random.random() < tube_mask_prob:
+        augmented = _apply_tube_mask(
+            augmented,
+            frame_span_range=tube_mask_frames_range,
+            scale_range=tube_mask_scale_range,
+            fill_mode=tube_mask_fill_mode,
+            center_bias=tube_mask_center_bias,
+        )
     return torch.clamp(augmented, 0.0, 1.0)
 
 
@@ -451,6 +495,63 @@ def _apply_gaussian_blur(clip: torch.Tensor, kernel_size: int, sigma: float) -> 
     return blurred.permute(1, 0, 2, 3)
 
 
+def _apply_tube_mask(
+    clip: torch.Tensor,
+    frame_span_range: tuple[int, int],
+    scale_range: tuple[float, float],
+    fill_mode: str,
+    center_bias: float,
+) -> torch.Tensor:
+    _, frame_count, height, width = clip.shape
+    min_span, max_span = sorted((max(int(frame_span_range[0]), 1), max(int(frame_span_range[1]), 1)))
+    min_span = min(min_span, frame_count)
+    max_span = min(max(max_span, min_span), frame_count)
+    span = min_span if min_span == max_span else random.randint(min_span, max_span)
+    start_index = 0 if frame_count == span else random.randint(0, frame_count - span)
+
+    min_scale, max_scale = sorted((max(float(scale_range[0]), 0.05), max(float(scale_range[1]), 0.05)))
+    scale = random.uniform(min_scale, max_scale)
+    mask_height = min(max(int(round(height * scale)), 1), height)
+    mask_width = min(max(int(round(width * scale)), 1), width)
+    top = _sample_mask_offset(height, mask_height, center_bias)
+    left = _sample_mask_offset(width, mask_width, center_bias)
+
+    fill = _build_tube_mask_fill(
+        shape=(clip.shape[0], span, mask_height, mask_width),
+        dtype=clip.dtype,
+        device=clip.device,
+        fill_mode=fill_mode,
+    )
+    clip[:, start_index:start_index + span, top:top + mask_height, left:left + mask_width] = fill
+    return clip
+
+
+def _sample_mask_offset(total_size: int, mask_size: int, center_bias: float) -> int:
+    max_offset = max(total_size - mask_size, 0)
+    if max_offset == 0:
+        return 0
+    if center_bias >= 1.0:
+        return max_offset // 2
+    random_offset = random.randint(0, max_offset)
+    if center_bias <= 0.0:
+        return random_offset
+    center_offset = max_offset // 2
+    return int(round(center_bias * center_offset + (1.0 - center_bias) * random_offset))
+
+
+def _build_tube_mask_fill(
+    shape: tuple[int, int, int, int],
+    dtype: torch.dtype,
+    device: torch.device,
+    fill_mode: str,
+) -> torch.Tensor:
+    if fill_mode == "zero":
+        return torch.zeros(shape, dtype=dtype, device=device)
+    if fill_mode == "noise":
+        return torch.rand(shape, dtype=dtype, device=device)
+    raise ValueError(f"Unsupported tube mask fill mode: {fill_mode}")
+
+
 def gaussian_heatmap(x: float, y: float, width: int, height: int, sigma: float = 1.8) -> np.ndarray:
     xs = np.arange(width, dtype=np.float32)
     ys = np.arange(height, dtype=np.float32)
@@ -478,7 +579,10 @@ def _centered_temporal_offsets(clip_length: int, frame_stride: int) -> list[int]
     return [(index - anchor) * frame_stride for index in range(clip_length)]
 
 
-def _nearest_group_row(group: list[tuple[int, int]], desired_frame_index: int) -> tuple[int, int]:
+def _nearest_group_row(
+    group: list[tuple[int, dict[str, str]]],
+    desired_frame_index: int,
+) -> tuple[int, dict[str, str]]:
     frame_indices = [frame_index for frame_index, _ in group]
     position = bisect_left(frame_indices, desired_frame_index)
     if position <= 0:

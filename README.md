@@ -1,126 +1,162 @@
 # Swim Pose
 
-This repository contains the current implementation pass for breaststroke 2D keypoint localization on a single stitched video per clip. The current scope covers annotation tooling, dataset bookkeeping, a supervised baseline, and semi-supervised scaffolding for the stitched-video-first workflow.
+`Swim Pose` 是一个面向游泳视频分析的 Python 项目。当前主线聚焦于“以单条 stitched 合成视频作为输入的蛙泳 2D 关键点定位”，并已经补齐了数据清单、抽帧、人工标注、训练、推理、评估、可视化这一整条本地实验链路。同时，仓库里也已经接入了 Phase 1 多泳姿视频级 SupCon 预训练，以及从视频特征向 2D 定位迁移的 bridge 实验能力。
 
-## Layout
+## 截至 2026-04-15 的开发状态
 
-- `configs/`: example experiment and data configuration files
-- `docs/`: annotation guide and project notes
-- `data/manifests/`: clip manifests and split outputs
-- `data/templates/`: annotation and manifest templates
-- `reports/`: human-readable reports such as failure mode logs
-- `src/swim_pose/`: implementation code and CLI entrypoints
+- 主线流程已打通：视频清单 -> 审计 -> 抽帧 -> 种子帧选择 -> 标注 -> 标注审计 -> 训练 -> 推理 -> 评估 -> 浏览器可视化
+- 已实现本地桌面标注 GUI 和浏览器标注 UI，支持 18 点关键点标注、可见性设置、状态切换和审计
+- 已实现监督训练、半监督训练、带时序约束的半监督训练、伪标签生成
+- 已实现单模型预测查看器，支持骨架叠加、逐帧浏览、序列播放、置信度过滤、指标联动展示
+- 已实现 Phase 1 视频级 SupCon 预训练，以及通过 `bridge` 配置把视频教师特征蒸馏到 2D 定位学生模型
+- 当前仍处于早期实验验证阶段，结论主要用于验证流程和方向，不代表已经获得稳定可泛化的模型能力
 
-## Quickstart
+## 当前仓库快照
+
+### 1. 定位主线数据
+
+- `data/manifests/clips.csv`：当前有 1 个定位用 stitched 蛙泳 clip
+- `data/manifests/unlabeled_index.csv`：当前抽出了 1276 张 stitched 帧
+- `data/manifests/seed_frames.csv`：当前选出了 12 张种子帧
+- `data/annotations/seed/`：当前共有 12 个标注 JSON
+- `reports/annotation-audit.json`：审计结果为 6 个 `labeled`、6 个 `no_swimmer`、0 个 warning、0 个 validation error
+- `data/manifests/annotation_index.csv`：当前只有 6 条可用于监督训练的已标注样本
+- `data/manifests/splits/train.csv`：当前有 6 条训练样本
+- `data/manifests/splits/val.csv`：当前为空
+- `data/manifests/splits/test.csv`：当前为空
+
+### 2. SupCon 视频预训练数据
+
+- `data/manifests/supcon_videos.csv`：当前有 12 条视频索引
+- 其中 11 条为 `valid`，1 条为 `mixed_stroke`
+- 当前有效泳姿分布为：蛙泳 3 条、仰泳 3 条、自由泳 3 条、蝶泳 2 条
+
+### 3. 基线实验产物
+
+- `artifacts/baselines/localization_baseline/` 下已经保存了一份基线包
+- 当前基线包中选中的模型是 `supervised`
+- `comparison.json` 显示目前监督基线优于两个半监督变体
+- `metrics.json` 中当前监督基线的初步结果为：
+  - `mean_normalized_error = 0.4096`
+  - `pck@0.05 = 0.0808`
+  - `pck@0.10 = 0.1919`
+- 上述指标只来自单个 athlete/session 的 6 张已标注帧，不能代表 held-out athlete 或 held-out session 的泛化能力
+
+## 已实现功能
+
+### 数据与路径管理
+
+- 支持从视频目录自动生成定位 manifest：`manifest init`
+- 支持补充视频元数据并审计 manifest：`manifest audit`
+- 支持把旧的相对路径 manifest 迁移为仓库相对路径或绝对路径：`manifest migrate-paths`
+- 支持构建 Phase 1 SupCon 视频索引，并过滤 `mixed_stroke`、异常命名和异常目录结构
+- 已统一“仓库内管理路径按 repo root 解析、外部源路径按输入来源解析”的规则，减少不同工作目录下的路径混乱
+
+### 标注与数据集构建
+
+- 已固定 18 点关键点定义：`nose`、`neck`、肩、肘、腕、髋、膝、踝、脚跟、脚尖
+- 已实现三档可见性语义：
+  - `2`：直接可见
+  - `1`：不可见但可推断
+  - `0`：不可见且不可可靠推断
+- 已实现标注模板生成、JSON 校验、种子帧标注脚手架生成
+- 已实现桌面 Tk 标注 GUI：`annotations gui`
+- 已实现浏览器标注界面：`annotations web`
+- 已实现标注审计：`annotations audit`
+- 已实现标注索引构建，只把 `frame_status = labeled` 的样本写入训练索引
+- 已支持 `pending`、`review`、`labeled`、`no_swimmer` 四种帧状态
+
+### 训练能力
+
+- 已实现 2D 关键点监督训练：`train supervised`
+- 已实现半监督训练：`train semisupervised`
+- 已实现带时序平滑约束的半监督训练配置：`configs/semi_supervised_temporal.toml`
+- 已实现 Phase 1 视频级 SupCon 预训练：`train supcon`
+- 当前默认 2D 主干配置为 `resnet18`
+- 当前默认视频预训练主干配置为 `r2plus1d_18`
+- 已实现 bridge 蒸馏训练：
+  - 冻结视频教师编码器
+  - 从时间邻域帧构建 clip
+  - 将 2D 学生的 pooled feature 通过 projector 对齐到视频教师特征
+
+### 推理、评估与可视化
+
+- 已实现预测导出：`predict`
+- 预测结果会输出每个关键点的：
+  - `x / y`
+  - `confidence`
+  - `visibility`
+- 已实现评估：`evaluate`
+- 当前评估会输出：
+  - `mean_normalized_error`
+  - `pck@0.05`
+  - `pck@0.10`
+  - `visible_mean_error`
+  - `occluded_mean_error`
+  - `temporal_jitter`
+  - `per_joint` 分项指标
+- 已实现预测浏览器：`predictions web`
+- 预测浏览器当前支持：
+  - 单个预测 JSONL 文件浏览
+  - 关键点骨架叠加
+  - 按 clip 过滤
+  - 序列播放
+  - 置信度阈值控制
+  - 每个关键点的坐标、置信度、可见性明细
+  - 可选展示整体指标和逐关节指标
+- 已实现伪标签生成：`pseudolabel generate`
+
+## 当前实验结论
+
+- 当前定位主线已经不是“只有标注工具”，而是已经具备完整的实验闭环
+- 当前监督基线优于两个半监督变体，说明在极小标注集条件下，伪标签与时序约束还没有带来稳定收益
+- 当前最难的关节主要集中在下肢远端，尤其是 `ankle / heel / toe`
+- `reports/failure-modes.md` 记录了当前最主要的问题来源：
+  - stitched 水线拼接导致头肩腕等位置不稳定
+  - 飞溅和遮挡使脚踝、脚跟、脚尖置信度下降
+  - 左右肢体在侧视重叠时容易发生身份混淆
+  - stitched 视频上的时序抖动仍然较高
+
+## 仓库结构
+
+- `src/swim_pose/`：核心实现与 CLI 入口
+- `configs/`：监督、半监督、SupCon、bridge 等实验配置
+- `docs/`：标注规范和研究说明
+- `data/manifests/`：clip 清单、抽帧索引、标注索引、数据划分、SupCon 视频索引
+- `data/templates/`：标注模板
+- `reports/`：标注审计和失败模式记录
+- `artifacts/`：基线包、checkpoint、预测结果、报告等实验产物
+- `tests/`：路径、manifest 迁移、SupCon 流程、bridge 流程等 smoke test
+- `openspec/`：需求规格与已归档变更记录
+
+## 环境与安装
+
+项目要求：
+
+- Python `>= 3.11`
+- 推荐使用 `uv`
+
+安装依赖：
 
 ```bash
 uv sync --locked
 ```
 
-The documented workflow uses `uv run ...`, so you do not need to manually activate `.venv` first. Supported commands are expected to work from the repository root and from subdirectories inside the repository.
-
-## Common Commands
+如果本机的 `uv` 缓存目录有权限问题，可以临时这样运行：
 
 ```bash
-uv run swim-pose manifest init --video-root data/raw/videos --output data/manifests/clips.csv
-uv run swim-pose manifest audit --manifest data/manifests/clips.csv --output data/manifests/clips.audit.csv
-uv run swim-pose frames extract --manifest data/manifests/clips.audit.csv --output-root data/frames --index-output data/manifests/unlabeled_index.csv --views stitched --every-nth 5
-uv run swim-pose annotations template --output data/templates/frame_annotation.example.json
-uv run swim-pose annotations validate --input data/templates/frame_annotation.example.json
-uv run swim-pose seed select --manifest data/manifests/clips.audit.csv --output data/manifests/seed_frames.csv --source-view stitched
-uv run swim-pose annotations scaffold --seed-csv data/manifests/seed_frames.csv --frame-root data/frames --output-root data/annotations/seed
-uv run swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames
-uv run swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json
-uv run swim-pose dataset split --index data/manifests/annotation_index.csv --output-dir data/manifests/splits
-uv run swim-pose train supervised --config configs/supervised.toml
-uv run swim-pose predict --config configs/supervised.toml --checkpoint artifacts/checkpoints/supervised/best.pt --index data/manifests/splits/val.csv --output artifacts/predictions/val_predictions.jsonl
-uv run swim-pose evaluate --predictions artifacts/predictions/val_predictions.jsonl --annotations data/manifests/splits/val.csv --output artifacts/reports/val_metrics.json
-uv run swim-pose predictions web --predictions artifacts/predictions/supervised_labeled_predictions.jsonl --frame-root data/frames --report artifacts/reports/supervised_eval.json
-uv run swim-pose pseudolabel generate --predictions artifacts/predictions/val_predictions.jsonl --output artifacts/predictions/pseudolabels.jsonl
-uv run swim-pose train semisupervised --config configs/semi_supervised.toml
+UV_CACHE_DIR=/tmp/uv-cache uv sync --locked
 ```
 
-## Prediction Viewer
+说明：
 
-After `predict`, you can inspect one model's results in a local browser UI:
+- 文档中的仓库内路径默认都以仓库根目录为基准
+- 大部分命令在仓库根目录或仓库子目录下都可以运行
+- 当前 `pyproject.toml` 和 `uv.lock` 里还没有声明 `pytest`，所以仓库虽然已经有 `tests/`，但还不能直接用 `uv run pytest` 跑回归测试
 
-```bash
-uv run swim-pose predictions web \
-  --predictions artifacts/predictions/supervised_labeled_predictions.jsonl \
-  --frame-root data/frames \
-  --report artifacts/reports/supervised_eval.json
-```
+## 数据约定
 
-What the viewer shows:
-
-- the original frame with the predicted 18-point skeleton overlay
-- continuous playback controls for turning a prediction sequence into a local pose video-style review
-- clip and frame navigation for browsing one prediction file
-- per-keypoint coordinates, confidence, and visibility values
-- optional overall and per-joint metrics when a report JSON is provided
-
-If the prediction file was generated from sampled frames rather than every original video frame, playback will still be sequence playback, but it will look like a sampled replay instead of a true full-frame reconstruction.
-
-If you only want qualitative inspection, `--report` is optional:
-
-```bash
-uv run swim-pose predictions web \
-  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
-  --frame-root data/frames
-```
-
-If you want a pure clip-based player view that auto-plays and hides the long frame list:
-
-```bash
-uv run swim-pose predictions web \
-  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
-  --frame-root data/frames \
-  --player-mode
-```
-
-If one predictions file contains multiple clips, you can jump directly into one clip:
-
-```bash
-uv run swim-pose predictions web \
-  --predictions artifacts/predictions/supervised_unlabeled_predictions.jsonl \
-  --frame-root data/frames \
-  --player-mode \
-  --clip athlete01_session01_蛙
-```
-
-## Path Rules
-
-- Relative config, checkpoint, manifest, report, and output paths are interpreted from the repository root.
-- Frame references stored inside annotations and frame indices stay relative to the configured `frame_root` / `image_root`.
-- Manifest source video paths are stored repository-relative when the videos live inside the repository, and absolute when they live outside it.
-- If you have an older manifest with caller-relative paths such as `../videos/...`, migrate it before use:
-
-```bash
-uv run swim-pose manifest migrate-paths \
-  --manifest data/manifests/clips.csv \
-  --output data/manifests/clips.migrated.csv \
-  --legacy-base /path/to/the/original/working-directory
-```
-
-## Annotation Contract
-
-The canonical keypoint schema uses 18 landmarks:
-
-`nose`, `neck`, `left_shoulder`, `right_shoulder`, `left_elbow`, `right_elbow`, `left_wrist`, `right_wrist`, `left_hip`, `right_hip`, `left_knee`, `right_knee`, `left_ankle`, `right_ankle`, `left_heel`, `right_heel`, `left_toe`, `right_toe`
-
-Visibility states are:
-
-- `2`: directly visible
-- `1`: occluded but inferable
-- `0`: not visible and not reliably inferable
-
-See `docs/annotation-guide.md` for the detailed labeling rules.
-
-## Raw Video Placement
-
-Put baseline source videos under `data/raw/videos/<athlete_id>/<session_id>/`.
-
-The current baseline expects one stitched video per clip:
+定位主线当前以 stitched 视频作为唯一必需输入。推荐视频目录如下：
 
 ```text
 data/raw/videos/
@@ -129,7 +165,7 @@ data/raw/videos/
       trial01_stitched.mp4
 ```
 
-If you also keep separate raw camera files for provenance or future experiments, keep the same clip stem:
+如果还保留原始机位视频，可以作为补充元数据保留：
 
 ```text
 data/raw/videos/
@@ -140,59 +176,186 @@ data/raw/videos/
       trial01_stitched.mp4
 ```
 
-Supported suffixes:
+支持的命名后缀：
 
-- `_above` for the above-water camera
-- `_under` for the underwater camera
-- `_stitched` for the baseline composite video
+- `_above`
+- `_under`
+- `_stitched`
 
-If a file has no view suffix, the tooling treats it as `stitched`.
+如果文件名没有视角后缀，工具默认把它当作 `stitched`
 
-## Manifest Notes
+## 推荐工作流
 
-`stitched_path` is the required baseline field for extraction, annotation, training, inference, and evaluation. `raw_above_path`, `raw_under_path`, and the audit status columns are optional provenance metadata when separate camera files exist.
-
-## Labeling Workflow
-
-`swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames` means:
-
-- `annotations gui`: open the local desktop labeling tool
-- `--annotation-root data/annotations/seed`: read and save the JSON annotation files under `data/annotations/seed`
-- `--frame-root data/frames`: load the corresponding JPG frame images from `data/frames`
-
-Recommended workflow:
-
-1. Run `uv run swim-pose annotations gui --annotation-root data/annotations/seed --frame-root data/frames`
-2. For frames where the swimmer is visible, place the 18 keypoints and mark the frame as `Labeled`
-3. For frames where the swimmer has not entered the view yet, use `No Swimmer` instead of silently skipping the file
-4. If you are not finished with a frame, keep it as `Pending`; if it needs another pass, mark it as `Review`
-5. Save and close the GUI
-6. Run `uv run swim-pose annotations audit --annotation-root data/annotations/seed --output reports/annotation-audit.json`
-7. If the audit looks clean, build the annotation index:
+### 1. 生成并审计定位 manifest
 
 ```bash
-uv run swim-pose annotations index --annotation-root data/annotations/seed --output data/manifests/annotation_index.csv
+uv run -- swim-pose manifest init \
+  --video-root data/raw/videos \
+  --output data/manifests/clips.csv
+
+uv run -- swim-pose manifest audit \
+  --manifest data/manifests/clips.csv \
+  --output data/manifests/clips.audit.csv
 ```
 
-GUI shortcuts:
+### 2. 抽帧并建立未标注索引
 
-- Left click: place the selected keypoint
-- Right click / `Delete` / `Backspace` / `c`: clear the selected keypoint
-- `Ctrl+Z`: undo the last edit
-- `0`, `1`, `2`: set visibility
-- `j`, `k`: switch keypoints
-- `a`, `d`: previous or next annotation file
-- `l`: mark `Labeled`
-- `n`: mark `No Swimmer`
-- `r`: mark `Review`
-- `p`: mark `Pending`
+```bash
+uv run -- swim-pose frames extract \
+  --manifest data/manifests/clips.audit.csv \
+  --output-root data/frames \
+  --index-output data/manifests/unlabeled_index.csv \
+  --views stitched \
+  --every-nth 5
+```
 
-Only frames with `frame_status = labeled` are written into `data/manifests/annotation_index.csv`. Frames marked `pending`, `review`, or `no_swimmer` stay out of the training index.
+### 3. 选择种子帧并生成标注文件
 
-If the desktop Tk GUI crashes on macOS, use the browser-based annotation UI instead:
+```bash
+uv run -- swim-pose seed select \
+  --manifest data/manifests/clips.audit.csv \
+  --output data/manifests/seed_frames.csv \
+  --source-view stitched
+
+uv run -- swim-pose annotations scaffold \
+  --seed-csv data/manifests/seed_frames.csv \
+  --frame-root data/frames \
+  --output-root data/annotations/seed
+```
+
+### 4. 进行人工标注
+
+桌面 GUI：
+
+```bash
+uv run -- swim-pose annotations gui \
+  --annotation-root data/annotations/seed \
+  --frame-root data/frames
+```
+
+浏览器标注界面：
+
+```bash
+uv run -- swim-pose annotations web \
+  --annotation-root data/annotations/seed \
+  --frame-root data/frames
+```
+
+如果 macOS 上 Tk GUI 不稳定，也可以直接运行：
 
 ```bash
 ./scripts/launch_annotation_gui.sh
 ```
 
-This wrapper now launches `annotations web` through the project's `uv` environment and opens the labeling page in your browser.
+### 5. 审计标注并生成训练索引
+
+```bash
+uv run -- swim-pose annotations audit \
+  --annotation-root data/annotations/seed \
+  --output reports/annotation-audit.json
+
+uv run -- swim-pose annotations index \
+  --annotation-root data/annotations/seed \
+  --output data/manifests/annotation_index.csv
+```
+
+### 6. 划分数据并训练 2D 基线
+
+```bash
+uv run -- swim-pose dataset split \
+  --index data/manifests/annotation_index.csv \
+  --output-dir data/manifests/splits
+
+uv run -- swim-pose train supervised \
+  --config configs/supervised.toml
+```
+
+### 7. 推理、评估、查看结果
+
+```bash
+uv run -- swim-pose predict \
+  --config configs/supervised.toml \
+  --checkpoint artifacts/checkpoints/supervised/best.pt \
+  --index data/manifests/splits/train.csv \
+  --output artifacts/predictions/supervised_train_predictions.jsonl
+
+uv run -- swim-pose evaluate \
+  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --annotations data/manifests/annotation_index.csv \
+  --output artifacts/reports/supervised_train_eval.json
+
+uv run -- swim-pose predictions web \
+  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --frame-root data/frames \
+  --report artifacts/reports/supervised_train_eval.json
+```
+
+## 进阶实验入口
+
+### 半监督
+
+```bash
+uv run -- swim-pose pseudolabel generate \
+  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --output artifacts/predictions/pseudolabels.jsonl
+
+uv run -- swim-pose train semisupervised \
+  --config configs/semi_supervised.toml
+```
+
+带时序约束的半监督可使用：
+
+```bash
+uv run -- swim-pose train semisupervised \
+  --config configs/semi_supervised_temporal.toml
+```
+
+### Phase 1 SupCon 视频预训练
+
+```bash
+uv run -- swim-pose dataset build-video-index \
+  --video-root data/raw/videos \
+  --output data/manifests/supcon_videos.csv
+
+uv run -- swim-pose train supcon \
+  --config configs/supcon.toml
+```
+
+### Bridge：视频特征迁移到 2D 定位
+
+```bash
+uv run -- swim-pose train supervised \
+  --config configs/supervised_bridge.toml
+```
+
+这个配置会额外：
+
+- 加载 `artifacts/checkpoints/supcon/best.pt` 作为视频教师
+- 从标注帧邻域构造时间 clip
+- 用 feature distillation 约束 2D 学生特征
+
+## 现有测试覆盖
+
+当前仓库中已经有以下 smoke test / 单元测试文件：
+
+- `tests/test_pathing.py`
+- `tests/test_manifest_migration.py`
+- `tests/test_supcon_pipeline.py`
+- `tests/test_localization_bridge.py`
+
+它们主要覆盖：
+
+- 仓库路径解析
+- 旧 manifest 路径迁移
+- SupCon 视频索引构建与训练 smoke test
+- bridge 数据集与监督训练 smoke test
+
+但目前项目依赖尚未正式纳入 `pytest`，所以这部分测试还没有接到可直接执行的标准开发流程里。
+
+## 已知限制与下一步
+
+- 当前定位实验只有 1 个 stitched 蛙泳 clip，监督样本只有 6 张，数据量远不足以支撑泛化结论
+- 由于只有单个 athlete/session，当前 `val.csv` 和 `test.csv` 为空，严格意义上的 held-out 验证还没有建立起来
+- 当前 stitched 水线拼接和下肢远端关键点仍然是主要误差来源
+- 半监督与时序约束分支已接入，但还没有在当前小样本条件下跑出优于监督基线的稳定收益
+- 下一阶段最重要的工作不是继续堆模型，而是补充更多 athlete/session 的可用标注数据，并建立真正的训练/验证/测试划分

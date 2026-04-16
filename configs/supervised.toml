@@ -2,6 +2,7 @@
 name = "breaststroke-supervised-baseline"
 output_dir = "artifacts/checkpoints/supervised"
 seed = 7
+conservative_stage = "stage0_frame_only"
 
 [dataset]
 train_index = "data/manifests/splits/train.csv"

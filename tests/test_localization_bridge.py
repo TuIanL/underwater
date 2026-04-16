@@ -11,8 +11,11 @@ import torch
 from PIL import Image
 
 from swim_pose.annotations import build_annotation_index, build_template
+from swim_pose.io import read_jsonl
 from swim_pose.training.dataset import TemporalPoseDataset
+from swim_pose.training.inference import run_inference
 from swim_pose.training.model import build_model
+from swim_pose.training.pseudolabels import generate_pseudolabel_file
 from swim_pose.training.supervised import run_supervised_training
 
 
@@ -31,6 +34,7 @@ class LocalizationBridgeDatasetTests(unittest.TestCase):
                 bridge_input_size=(16, 16),
                 bridge_clip_length=3,
                 bridge_frame_stride=1,
+                bridge_context_index=index_path,
             )
 
             sample = dataset[2]
@@ -40,6 +44,28 @@ class LocalizationBridgeDatasetTests(unittest.TestCase):
             frame_means = sample["bridge_clip"].mean(dim=(0, 2, 3)).tolist()
             self.assertLess(frame_means[0], frame_means[1])
             self.assertLess(frame_means[1], frame_means[2])
+
+    def test_temporal_pose_dataset_marks_missing_dense_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            frame_root, annotation_root = _write_labeled_sequence(base, frame_count=3, clip_id="clipMissing")
+            index_path = build_annotation_index(annotation_root, base / "annotation_index.csv")
+
+            dataset = TemporalPoseDataset(
+                index_path=index_path,
+                image_root=frame_root,
+                input_size=(32, 32),
+                heatmap_size=(8, 8),
+                bridge_input_size=(16, 16),
+                bridge_clip_length=3,
+                bridge_frame_stride=1,
+            )
+
+            sample = dataset[1]
+
+            self.assertFalse(sample["has_bridge_context"])
+            self.assertEqual(sample["bridge_frame_indices"].tolist(), [-1, -1, -1])
+            self.assertTrue(torch.equal(sample["bridge_clip"], torch.zeros((3, 3, 16, 16))))
 
 
 class LocalizationBridgeTrainingTests(unittest.TestCase):
@@ -58,6 +84,7 @@ class LocalizationBridgeTrainingTests(unittest.TestCase):
                     name = "supervised-bridge-smoke"
                     output_dir = "{(base / 'artifacts').as_posix()}"
                     seed = 7
+                    conservative_stage = "stage2_dense_context"
 
                     [dataset]
                     train_index = "{index_path.as_posix()}"
@@ -85,11 +112,13 @@ class LocalizationBridgeTrainingTests(unittest.TestCase):
                     [bridge]
                     enabled = true
                     teacher_checkpoint = "{teacher_checkpoint.as_posix()}"
+                    context_index = "{index_path.as_posix()}"
                     input_width = 16
                     input_height = 16
                     clip_length = 3
                     frame_stride = 1
                     distillation_weight = 0.1
+                    skip_missing_context = true
                     """
                 ).strip()
                 + "\n",
@@ -105,11 +134,86 @@ class LocalizationBridgeTrainingTests(unittest.TestCase):
 
             self.assertEqual(state["checkpoint_type"], "localization_bridge")
             self.assertEqual(state["training_mode"], "supervised")
+            self.assertEqual(state["prediction_contract"], "frame_keyed")
+            self.assertEqual(state["conservative_upgrade"]["stage"], "stage2_dense_context")
             self.assertEqual(state["bridge_type"], "video_feature_distillation")
             self.assertEqual(state["bridge_teacher_backbone"], "fake_video_teacher")
             self.assertIn("bridge_projector", state)
             self.assertEqual(len(payload), 1)
             self.assertIn("bridge_loss", payload[0])
+            self.assertEqual(payload[0]["bridge_context_coverage"], 1.0)
+
+    def test_run_supervised_training_skips_bridge_loss_when_dense_context_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            frame_root, annotation_root = _write_labeled_sequence(base, frame_count=3, clip_id="clipD")
+            index_path = build_annotation_index(annotation_root, base / "annotation_index.csv")
+            empty_context = base / "empty_context.csv"
+            empty_context.write_text(
+                "image_path,clip_id,athlete_id,session_id,frame_index,source_view\n",
+                encoding="utf-8",
+            )
+            teacher_checkpoint = base / "teacher.pt"
+            teacher_checkpoint.write_bytes(b"bridge")
+            config_path = base / "supervised_bridge_missing.toml"
+            config_path.write_text(
+                textwrap.dedent(
+                    f"""
+                    [experiment]
+                    name = "supervised-bridge-missing-context"
+                    output_dir = "{(base / 'artifacts').as_posix()}"
+                    seed = 7
+                    conservative_stage = "stage2_dense_context"
+
+                    [dataset]
+                    train_index = "{index_path.as_posix()}"
+                    annotation_index = "{index_path.as_posix()}"
+                    image_root = "{frame_root.as_posix()}"
+                    input_width = 32
+                    input_height = 32
+                    heatmap_width = 8
+                    heatmap_height = 8
+
+                    [model]
+                    backbone = "resnet18"
+                    pretrained_backbone = false
+                    pretrained_checkpoint = ""
+
+                    [training]
+                    epochs = 1
+                    batch_size = 2
+                    learning_rate = 0.0005
+                    weight_decay = 0.0001
+                    num_workers = 0
+                    visibility_loss_weight = 0.2
+                    device = "cpu"
+
+                    [bridge]
+                    enabled = true
+                    teacher_checkpoint = "{teacher_checkpoint.as_posix()}"
+                    context_index = "{empty_context.as_posix()}"
+                    input_width = 16
+                    input_height = 16
+                    clip_length = 3
+                    frame_stride = 1
+                    distillation_weight = 0.1
+                    skip_missing_context = true
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("swim_pose.training.supervised.load_bridge_teacher", return_value=(_FakeTeacher(), {"backbone": "fake_video_teacher"})):
+                checkpoint = run_supervised_training(config_path)
+
+            metrics_path = base / "artifacts" / "train_metrics.json"
+            state = torch.load(checkpoint, map_location="cpu")
+            payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(state["checkpoint_type"], "localization_bridge")
+            self.assertEqual(payload[0]["bridge_loss"], 0.0)
+            self.assertEqual(payload[0]["bridge_context_coverage"], 0.0)
 
     def test_run_supervised_training_without_bridge_writes_localization_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -188,6 +292,80 @@ class LocalizationBridgeTrainingTests(unittest.TestCase):
             )
 
             self.assertIsNotNone(reloaded)
+
+    def test_inference_and_pseudolabels_remain_frame_keyed_for_bridge_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            frame_root, annotation_root = _write_labeled_sequence(base, frame_count=2, clip_id="clipInfer")
+            index_path = build_annotation_index(annotation_root, base / "annotation_index.csv")
+            config_path = base / "inference.toml"
+            config_path.write_text(
+                textwrap.dedent(
+                    f"""
+                    [experiment]
+                    name = "bridge-inference"
+                    output_dir = "{(base / 'artifacts').as_posix()}"
+                    seed = 7
+                    conservative_stage = "stage2_dense_context"
+
+                    [dataset]
+                    train_index = "{index_path.as_posix()}"
+                    annotation_index = "{index_path.as_posix()}"
+                    image_root = "{frame_root.as_posix()}"
+                    input_width = 32
+                    input_height = 32
+                    heatmap_width = 8
+                    heatmap_height = 8
+
+                    [model]
+                    backbone = "resnet18"
+                    pretrained_backbone = false
+                    pretrained_checkpoint = ""
+
+                    [training]
+                    epochs = 1
+                    batch_size = 2
+                    learning_rate = 0.0005
+                    weight_decay = 0.0001
+                    num_workers = 0
+                    visibility_loss_weight = 0.2
+                    device = "cpu"
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            model = build_model(
+                {"model": {"backbone": "resnet18", "pretrained_backbone": False, "pretrained_checkpoint": ""}},
+                num_keypoints=18,
+            )
+            checkpoint_path = base / "bridge.pt"
+            torch.save(
+                {
+                    "checkpoint_type": "localization_bridge",
+                    "training_mode": "supervised",
+                    "prediction_contract": "frame_keyed",
+                    "conservative_upgrade": {"stage": "stage2_dense_context", "bridge": {"enabled": True}},
+                    "model": model.state_dict(),
+                },
+                checkpoint_path,
+            )
+
+            predictions_path = base / "predictions.jsonl"
+            pseudolabels_path = base / "pseudolabels.jsonl"
+            run_inference(config_path, checkpoint_path, index_path, predictions_path, labeled=True)
+            generate_pseudolabel_file(predictions_path, pseudolabels_path, threshold=0.0)
+
+            predictions = read_jsonl(predictions_path)
+            pseudolabels = read_jsonl(pseudolabels_path)
+
+            self.assertEqual(len(predictions), 2)
+            self.assertEqual(len(pseudolabels), 2)
+            self.assertEqual(predictions[0]["frame_index"], 0)
+            self.assertEqual(predictions[1]["frame_index"], 1)
+            self.assertEqual(pseudolabels[0]["frame_index"], 0)
+            self.assertEqual(pseudolabels[1]["frame_index"], 1)
 
 
 class _FakeTeacher(torch.nn.Module):
