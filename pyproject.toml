@@ -14,6 +14,7 @@ dependencies = [
   "Pillow>=10.0",
   "torch>=2.3",
   "torchvision>=0.18",
+  "ultralytics==8.4.26",
 ]
 
 [project.scripts]

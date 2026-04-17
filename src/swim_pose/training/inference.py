@@ -8,9 +8,12 @@ from torch.utils.data import DataLoader
 
 from ..constants import KEYPOINT_NAMES
 from ..io import write_jsonl
+from .baselines import is_yolo_pose_config
 from .config import load_config
 from .dataset import PoseDataset, UnlabeledFrameDataset
 from .model import build_model
+from .postprocess import apply_temporal_postprocessing, build_filtered_variant_rows
+from .yolo_pose import run_yolo_pose_inference
 
 
 def run_inference(
@@ -21,6 +24,34 @@ def run_inference(
     labeled: bool = True,
 ) -> Path:
     config = load_config(config_path)
+    if is_yolo_pose_config(config):
+        return run_yolo_pose_inference(
+            config_path=config_path,
+            checkpoint_path=checkpoint_path,
+            index_path=index_path,
+            output_path=output_path,
+            labeled=labeled,
+        )
+    outputs = _run_legacy_inference(
+        config=config,
+        checkpoint_path=checkpoint_path,
+        index_path=index_path,
+        labeled=labeled,
+    )
+    outputs = apply_temporal_postprocessing(outputs, config)
+    write_jsonl(output_path, outputs)
+    filtered_output = str(config.get("postprocess", {}).get("filtered_output", "")).strip()
+    if filtered_output:
+        write_jsonl(filtered_output, build_filtered_variant_rows(outputs))
+    return Path(output_path)
+
+
+def _run_legacy_inference(
+    config: dict,
+    checkpoint_path: str | Path,
+    index_path: str | Path,
+    labeled: bool,
+) -> list[dict]:
     input_size = (config["dataset"]["input_width"], config["dataset"]["input_height"])
     heatmap_size = (config["dataset"]["heatmap_width"], config["dataset"]["heatmap_height"])
     image_root = config["dataset"]["image_root"]
@@ -40,8 +71,7 @@ def run_inference(
         for batch in loader:
             predictions = model(batch["image"])
             outputs.extend(_decode_batch(batch, predictions))
-    write_jsonl(output_path, outputs)
-    return Path(output_path)
+    return outputs
 
 
 def _decode_batch(batch: dict, predictions: dict[str, torch.Tensor]) -> list[dict]:

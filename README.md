@@ -1,14 +1,15 @@
 # Swim Pose
 
-`Swim Pose` 是一个面向游泳视频分析的 Python 项目。当前主线聚焦于“以单条 stitched 合成视频作为输入的蛙泳 2D 关键点定位”，并已经补齐了数据清单、抽帧、人工标注、训练、推理、评估、可视化这一整条本地实验链路。同时，仓库里也已经接入了 Phase 1 多泳姿视频级 SupCon 预训练，以及从视频特征向 2D 定位迁移的 bridge 实验能力。
+`Swim Pose` 是一个面向游泳视频分析的 Python 项目。当前主线聚焦于“以单条 stitched 合成视频作为输入的蛙泳 2D 关键点定位”，并已经补齐了数据清单、抽帧、人工标注、训练、推理、评估、可视化这一整条本地实验链路。自 2026-04-17 起，默认监督基线已经切换为“YOLOv8-Pose 2D 强基线 + 水下域适应 + 时序后处理”；原有自研 heatmap、Phase 1 SupCon 和 bridge 路线保留为研究型 baseline。
 
-## 截至 2026-04-15 的开发状态
+## 截至 2026-04-17 的开发状态
 
 - 主线流程已打通：视频清单 -> 审计 -> 抽帧 -> 种子帧选择 -> 标注 -> 标注审计 -> 训练 -> 推理 -> 评估 -> 浏览器可视化
 - 已实现本地桌面标注 GUI 和浏览器标注 UI，支持 18 点关键点标注、可见性设置、状态切换和审计
-- 已实现监督训练、半监督训练、带时序约束的半监督训练、伪标签生成
+- 已实现默认 YOLO 监督训练、legacy heatmap 监督训练、半监督训练、带时序约束的半监督训练、伪标签生成
 - 已实现单模型预测查看器，支持骨架叠加、逐帧浏览、序列播放、置信度过滤、指标联动展示
-- 已实现 Phase 1 视频级 SupCon 预训练，以及通过 `bridge` 配置把视频教师特征蒸馏到 2D 定位学生模型
+- 已实现 YOLO pose 数据集导出、18 点 schema 适配、raw/filtered 双轨导出，以及时序稳定性评估
+- 已实现 Phase 1 视频级 SupCon 预训练，以及通过 `bridge` 配置把视频教师特征蒸馏到 legacy 2D heatmap 学生模型
 - 当前仍处于早期实验验证阶段，结论主要用于验证流程和方向，不代表已经获得稳定可泛化的模型能力
 
 ## 当前仓库快照
@@ -68,13 +69,15 @@
 
 ### 训练能力
 
-- 已实现 2D 关键点监督训练：`train supervised`
-- 已实现半监督训练：`train semisupervised`
+- 已实现默认 YOLO 2D 关键点监督训练：`train supervised --config configs/supervised.toml`
+- 已实现 project-owned YOLO pose 数据集导出：`dataset export-yolo-pose`
+- 已保留 legacy heatmap 监督训练：`train supervised --config configs/supervised_legacy.toml`
+- 已实现半监督训练（legacy heatmap research baseline）：`train semisupervised`
 - 已实现带时序平滑约束的半监督训练配置：`configs/semi_supervised_temporal.toml`
 - 已实现 Phase 1 视频级 SupCon 预训练：`train supcon`
-- 当前默认 2D 主干配置为 `resnet18`
+- 当前默认 2D 主干配置为 `yolov8s-pose.pt`
 - 当前默认视频预训练主干配置为 `r2plus1d_18`
-- 已实现 bridge 蒸馏训练：
+- 已实现 bridge 蒸馏训练（legacy research baseline）：
   - 冻结视频教师编码器
   - 从时间邻域帧构建 clip
   - 将 2D 学生的 pooled feature 通过 projector 对齐到视频教师特征
@@ -86,6 +89,7 @@
   - `x / y`
   - `confidence`
   - `visibility`
+- 当启用时序后处理时，同一条预测 JSONL 还会额外输出 `filtered_points`
 - 已实现评估：`evaluate`
 - 当前评估会输出：
   - `mean_normalized_error`
@@ -93,7 +97,8 @@
   - `pck@0.10`
   - `visible_mean_error`
   - `occluded_mean_error`
-  - `temporal_jitter`
+  - raw `temporal_jitter`（基于 midpoint residual）
+  - `temporal_stability.raw / temporal_stability.filtered`
   - `per_joint` 分项指标
 - 已实现预测浏览器：`predictions web`
 - 预测浏览器当前支持：
@@ -105,6 +110,7 @@
   - 每个关键点的坐标、置信度、可见性明细
   - 可选展示整体指标和逐关节指标
 - 已实现伪标签生成：`pseudolabel generate`
+- 伪标签生成支持可选消费 `filtered_points`：`pseudolabel generate --use-filtered`
 
 ## 当前实验结论
 
@@ -120,7 +126,7 @@
 ## 仓库结构
 
 - `src/swim_pose/`：核心实现与 CLI 入口
-- `configs/`：监督、半监督、SupCon、bridge 等实验配置
+- `configs/`：默认 YOLO baseline、legacy heatmap research baseline、半监督、SupCon、bridge 等实验配置
 - `docs/`：标注规范和研究说明
 - `data/manifests/`：clip 清单、抽帧索引、标注索引、数据划分、SupCon 视频索引
 - `data/templates/`：标注模板
@@ -152,7 +158,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv sync --locked
 
 - 文档中的仓库内路径默认都以仓库根目录为基准
 - 大部分命令在仓库根目录或仓库子目录下都可以运行
-- 当前 `pyproject.toml` 和 `uv.lock` 里还没有声明 `pytest`，所以仓库虽然已经有 `tests/`，但还不能直接用 `uv run pytest` 跑回归测试
+- 当前依赖中已包含 `ultralytics==8.4.26`
+- 当前 `pyproject.toml` 和 `uv.lock` 里还没有声明 `pytest`，所以仓库虽然已经有 `tests/`，但还没有切到 `uv run pytest` 这一套标准回归入口
 
 ## 数据约定
 
@@ -259,7 +266,7 @@ uv run -- swim-pose annotations index \
   --output data/manifests/annotation_index.csv
 ```
 
-### 6. 划分数据并训练 2D 基线
+### 6. 划分数据并训练默认 YOLO 2D 基线
 
 ```bash
 uv run -- swim-pose dataset split \
@@ -270,37 +277,55 @@ uv run -- swim-pose train supervised \
   --config configs/supervised.toml
 ```
 
+如果你想复现实验期的 legacy heatmap baseline，可使用：
+
+```bash
+uv run -- swim-pose train supervised \
+  --config configs/supervised_legacy.toml
+```
+
 ### 7. 推理、评估、查看结果
 
 ```bash
 uv run -- swim-pose predict \
   --config configs/supervised.toml \
-  --checkpoint artifacts/checkpoints/supervised/best.pt \
+  --checkpoint artifacts/checkpoints/supervised_yolo/best.pt \
   --index data/manifests/splits/train.csv \
-  --output artifacts/predictions/supervised_train_predictions.jsonl
+  --output artifacts/predictions/supervised_yolo_train_predictions.jsonl
 
 uv run -- swim-pose evaluate \
-  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --predictions artifacts/predictions/supervised_yolo_train_predictions.jsonl \
   --annotations data/manifests/annotation_index.csv \
-  --output artifacts/reports/supervised_train_eval.json
+  --output artifacts/reports/supervised_yolo_train_eval.json
 
 uv run -- swim-pose predictions web \
-  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --predictions artifacts/predictions/supervised_yolo_train_predictions.jsonl \
   --frame-root data/frames \
-  --report artifacts/reports/supervised_train_eval.json
+  --report artifacts/reports/supervised_yolo_train_eval.json
 ```
+
+如果配置里启用了 `postprocess`，预测 JSONL 会同时包含 raw `points` 与 `filtered_points`；也可以通过 `postprocess.filtered_output` 额外写出纯 filtered sidecar artifact。
 
 ## 进阶实验入口
 
-### 半监督
+### 半监督（legacy heatmap research baseline）
 
 ```bash
 uv run -- swim-pose pseudolabel generate \
-  --predictions artifacts/predictions/supervised_train_predictions.jsonl \
+  --predictions artifacts/predictions/supervised_yolo_train_predictions.jsonl \
   --output artifacts/predictions/pseudolabels.jsonl
 
 uv run -- swim-pose train semisupervised \
   --config configs/semi_supervised.toml
+```
+
+如果你希望伪标签直接消费滤波后的轨迹，可使用：
+
+```bash
+uv run -- swim-pose pseudolabel generate \
+  --predictions artifacts/predictions/supervised_yolo_train_predictions.jsonl \
+  --output artifacts/predictions/pseudolabels.filtered.jsonl \
+  --use-filtered
 ```
 
 带时序约束的半监督可使用：
@@ -321,7 +346,7 @@ uv run -- swim-pose train supcon \
   --config configs/supcon.toml
 ```
 
-### Bridge：视频特征迁移到 2D 定位
+### Bridge：视频特征迁移到 legacy 2D heatmap 定位
 
 ```bash
 uv run -- swim-pose train supervised \
@@ -357,5 +382,6 @@ uv run -- swim-pose train supervised \
 - 当前定位实验只有 1 个 stitched 蛙泳 clip，监督样本只有 6 张，数据量远不足以支撑泛化结论
 - 由于只有单个 athlete/session，当前 `val.csv` 和 `test.csv` 为空，严格意义上的 held-out 验证还没有建立起来
 - 当前 stitched 水线拼接和下肢远端关键点仍然是主要误差来源
-- 半监督与时序约束分支已接入，但还没有在当前小样本条件下跑出优于监督基线的稳定收益
-- 下一阶段最重要的工作不是继续堆模型，而是补充更多 athlete/session 的可用标注数据，并建立真正的训练/验证/测试划分
+- 默认 YOLO baseline 的首轮 smoke comparison 已记录在 `artifacts/reports/yolo_underwater_smoke_comparison.json`，但它只用于验证接线，不足以作为正式 promotion 依据
+- 半监督、SupCon 与 bridge 分支仍然保留，但当前定位主线的优先级已经转到“补标注 + 水下域适应 + 时序稳定化”
+- 下一阶段最重要的工作不是继续堆复杂时空模型，而是补充更多 athlete/session 的可用标注数据，并建立真正的训练/验证/测试划分

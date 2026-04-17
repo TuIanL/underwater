@@ -10,16 +10,24 @@ from torch.utils.data import DataLoader
 from ..constants import KEYPOINT_NAMES
 from ..io import ensure_parent
 from ..pathing import serialize_workspace_path
+from .baselines import is_yolo_pose_config
 from .bridge import FeatureBridgeProjector, bridge_feature_loss, load_bridge_teacher
 from .common import checkpoint_path, forward_with_singleton_batch_support, resolve_device, set_random_seed
 from .config import experiment_output_dir, load_config
 from .dataset import PoseDataset, TemporalPoseDataset
 from .losses import supervised_pose_loss
 from .model import build_model
+from .yolo_pose import run_yolo_pose_training
 
 
 def run_supervised_training(config_path: str | Path) -> Path:
     config = load_config(config_path)
+    if is_yolo_pose_config(config):
+        return run_yolo_pose_training(config_path)
+    return _run_legacy_supervised_training(config)
+
+
+def _run_legacy_supervised_training(config: dict) -> Path:
     set_random_seed(int(config["experiment"].get("seed", 7)))
     training_config = config["training"]
     device = resolve_device(training_config.get("device"))

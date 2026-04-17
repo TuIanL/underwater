@@ -5,12 +5,18 @@ from pathlib import Path
 from ..io import read_jsonl, write_jsonl
 
 
-def generate_pseudolabel_file(predictions_path: str | Path, output_path: str | Path, threshold: float) -> Path:
+def generate_pseudolabel_file(
+    predictions_path: str | Path,
+    output_path: str | Path,
+    threshold: float,
+    use_filtered: bool = False,
+) -> Path:
     predictions = read_jsonl(predictions_path)
     pseudolabels: list[dict] = []
     for row in predictions:
+        points_source = row.get("filtered_points") if use_filtered and isinstance(row.get("filtered_points"), dict) else row["points"]
         points = {}
-        for name, point in row["points"].items():
+        for name, point in points_source.items():
             accepted = float(point.get("confidence", 0.0)) >= threshold and int(point.get("visibility", 0)) > 0
             points[name] = {
                 "x": point["x"] if accepted else None,
@@ -30,9 +36,9 @@ def generate_pseudolabel_file(predictions_path: str | Path, output_path: str | P
                 "metadata": {
                     "generated_from": str(predictions_path),
                     "threshold": threshold,
+                    "use_filtered": use_filtered,
                 },
             }
         )
     write_jsonl(output_path, pseudolabels)
     return Path(output_path)
-

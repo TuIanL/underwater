@@ -19,6 +19,8 @@ CONFIG_PATH_FIELDS = {
     ),
     "model": ("pretrained_checkpoint",),
     "bridge": ("teacher_checkpoint", "context_index"),
+    "yolo": ("dataset_dir", "vendor_output_dir"),
+    "postprocess": ("filtered_output",),
 }
 
 

@@ -128,6 +128,16 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_video_index.add_argument("--output", required=True)
     dataset_video_index.set_defaults(handler=_handle_dataset_build_video_index)
 
+    dataset_export_pose = dataset_sub.add_parser(
+        "export-yolo-pose",
+        help="Export labeled annotations into a project-owned YOLO pose dataset bundle.",
+    )
+    dataset_export_pose.add_argument("--train-index", required=True)
+    dataset_export_pose.add_argument("--image-root", required=True)
+    dataset_export_pose.add_argument("--output-dir", required=True)
+    dataset_export_pose.add_argument("--val-index")
+    dataset_export_pose.set_defaults(handler=_handle_dataset_export_yolo_pose)
+
     train_parser = subparsers.add_parser("train", help="Training entrypoints.")
     train_sub = train_parser.add_subparsers(dest="train_command")
 
@@ -178,6 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     pseudo_generate.add_argument("--predictions", required=True)
     pseudo_generate.add_argument("--output", required=True)
     pseudo_generate.add_argument("--threshold", type=float, default=0.5)
+    pseudo_generate.add_argument("--use-filtered", action="store_true")
     pseudo_generate.set_defaults(handler=_handle_pseudolabel_generate)
 
     return parser
@@ -343,6 +354,21 @@ def _handle_dataset_build_video_index(args: argparse.Namespace) -> None:
     )
 
 
+def _handle_dataset_export_yolo_pose(args: argparse.Namespace) -> None:
+    from .training.yolo_pose import export_yolo_pose_dataset
+
+    bundle = export_yolo_pose_dataset(
+        index_path=resolve_repo_managed_path(args.train_index),
+        image_root=resolve_repo_managed_path(args.image_root),
+        output_dir=resolve_repo_managed_path(args.output_dir),
+        val_index=resolve_repo_managed_path(args.val_index) if args.val_index else None,
+    )
+    print(
+        "Wrote YOLO pose dataset bundle to "
+        f"{bundle.root_dir} (train={bundle.train_samples}, val={bundle.val_samples}, schema={bundle.schema_path})"
+    )
+
+
 def _handle_train_supervised(args: argparse.Namespace) -> None:
     from .training.supervised import run_supervised_training
 
@@ -413,6 +439,7 @@ def _handle_pseudolabel_generate(args: argparse.Namespace) -> None:
         resolve_repo_managed_path(args.predictions),
         resolve_repo_managed_path(args.output),
         args.threshold,
+        use_filtered=args.use_filtered,
     )
     print(f"Wrote pseudolabels to {destination}")
 

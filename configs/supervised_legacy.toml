@@ -1,8 +1,8 @@
 [experiment]
-name = "research-legacy-heatmap-bridge-spike"
-output_dir = "artifacts/checkpoints/research_supervised_bridge"
+name = "research-legacy-heatmap-supervised"
+output_dir = "artifacts/checkpoints/supervised_legacy"
 seed = 7
-conservative_stage = "stage2_dense_context"
+conservative_stage = "research_legacy_heatmap"
 
 [dataset]
 train_index = "data/manifests/splits/train.csv"
@@ -27,14 +27,3 @@ learning_rate = 0.0005
 weight_decay = 0.0001
 num_workers = 0
 visibility_loss_weight = 0.2
-
-[bridge]
-enabled = true
-teacher_checkpoint = "artifacts/checkpoints/supcon/best.pt"
-context_index = "data/manifests/unlabeled_index.csv"
-input_width = 112
-input_height = 112
-clip_length = 8
-frame_stride = 2
-distillation_weight = 0.1
-skip_missing_context = true

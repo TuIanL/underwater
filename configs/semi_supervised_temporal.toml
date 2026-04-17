@@ -1,6 +1,6 @@
 [experiment]
-name = "breaststroke-semi-supervised-temporal"
-output_dir = "artifacts/checkpoints/semi_supervised_temporal"
+name = "research-legacy-heatmap-semi-supervised-temporal"
+output_dir = "artifacts/checkpoints/research_semi_supervised_temporal"
 seed = 7
 
 [dataset]
@@ -13,9 +13,10 @@ heatmap_width = 64
 heatmap_height = 64
 
 [model]
+family = "legacy_heatmap"
 backbone = "resnet18"
 pretrained_backbone = true
-pretrained_checkpoint = "artifacts/checkpoints/supervised/best.pt"
+pretrained_checkpoint = "artifacts/checkpoints/supervised_legacy/best.pt"
 
 [training]
 epochs = 10

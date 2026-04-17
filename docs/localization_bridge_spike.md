@@ -1,6 +1,6 @@
 # Localization Bridge Spike
 
-This spike compares the current supervised localization baseline against the explicit video-to-2D bridge path.
+This spike compares the legacy supervised heatmap baseline against the explicit video-to-2D bridge path.
 
 ## Goal
 
@@ -8,7 +8,7 @@ Test whether a frozen Phase 1 SupCon video teacher improves held-out localizatio
 
 ## Configs
 
-- Baseline: `configs/supervised.toml`
+- Baseline: `configs/supervised_legacy.toml`
 - Bridge spike: `configs/supervised_bridge.toml`
 
 ## Commands
@@ -16,15 +16,15 @@ Test whether a frozen Phase 1 SupCon video teacher improves held-out localizatio
 Train the baseline:
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run -- swim-pose train supervised --config configs/supervised.toml
+UV_CACHE_DIR=/tmp/uv-cache uv run -- swim-pose train supervised --config configs/supervised_legacy.toml
 ```
 
 Run baseline inference on the validation split:
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run -- swim-pose predict \
-  --config configs/supervised.toml \
-  --checkpoint artifacts/checkpoints/supervised/best.pt \
+  --config configs/supervised_legacy.toml \
+  --checkpoint artifacts/checkpoints/supervised_legacy/best.pt \
   --index data/manifests/splits/val.csv \
   --output artifacts/reports/supervised_val_predictions.jsonl
 ```
@@ -49,7 +49,7 @@ Run bridge inference on the validation split:
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run -- swim-pose predict \
   --config configs/supervised_bridge.toml \
-  --checkpoint artifacts/checkpoints/supervised_bridge/best.pt \
+  --checkpoint artifacts/checkpoints/research_supervised_bridge/best.pt \
   --index data/manifests/splits/val.csv \
   --output artifacts/reports/supervised_bridge_val_predictions.jsonl
 ```
@@ -65,7 +65,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run -- swim-pose evaluate \
 
 ## Baseline Comparison
 
-Use the same train/val split, seed, and student backbone for both runs. The only intentional difference is the bridge path enabled by `configs/supervised_bridge.toml`.
+Use the same train/val split, seed, and legacy student backbone for both runs. The only intentional difference is the bridge path enabled by `configs/supervised_bridge.toml`.
 
 ## Success Criteria
 

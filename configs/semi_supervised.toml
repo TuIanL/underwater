@@ -1,6 +1,6 @@
 [experiment]
-name = "breaststroke-semi-supervised"
-output_dir = "artifacts/checkpoints/semi_supervised"
+name = "research-legacy-heatmap-semi-supervised"
+output_dir = "artifacts/checkpoints/research_semi_supervised"
 seed = 7
 
 [dataset]
@@ -13,9 +13,10 @@ heatmap_width = 64
 heatmap_height = 64
 
 [model]
+family = "legacy_heatmap"
 backbone = "resnet18"
 pretrained_backbone = true
-pretrained_checkpoint = "artifacts/checkpoints/supervised/best.pt"
+pretrained_checkpoint = "artifacts/checkpoints/supervised_legacy/best.pt"
 
 [training]
 epochs = 10
@@ -26,4 +27,3 @@ num_workers = 0
 visibility_loss_weight = 0.2
 consistency_loss_weight = 0.5
 pseudolabel_threshold = 0.5
-

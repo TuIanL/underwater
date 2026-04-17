@@ -1,28 +1,41 @@
 [experiment]
-name = "breaststroke-supervised-baseline"
-output_dir = "artifacts/checkpoints/supervised"
+name = "breaststroke-yolo-supervised-baseline"
+output_dir = "artifacts/checkpoints/supervised_yolo"
 seed = 7
-conservative_stage = "stage0_frame_only"
+conservative_stage = "stage0_yolo_2d_baseline"
 
 [dataset]
 train_index = "data/manifests/splits/train.csv"
 val_index = "data/manifests/splits/val.csv"
 annotation_index = "data/manifests/annotation_index.csv"
 image_root = "data/frames"
-input_width = 256
-input_height = 256
+input_width = 640
+input_height = 640
 heatmap_width = 64
 heatmap_height = 64
 
 [model]
-backbone = "resnet18"
-pretrained_backbone = true
-pretrained_checkpoint = ""
+family = "yolo_pose"
 
 [training]
-epochs = 10
+epochs = 20
 batch_size = 8
-learning_rate = 0.0005
-weight_decay = 0.0001
+learning_rate = 0.001
+weight_decay = 0.0005
 num_workers = 0
-visibility_loss_weight = 0.2
+
+[yolo]
+pretrained_model = "yolov8s-pose.pt"
+image_size = 640
+predict_batch_size = 8
+box_confidence = 0.25
+visibility_visible_threshold = 0.55
+visibility_inferable_threshold = 0.2
+adaptation_preset = "underwater_v1"
+
+[postprocess]
+enabled = true
+method = "ema"
+alpha = 0.65
+min_alpha = 0.2
+confidence_floor = 0.1
